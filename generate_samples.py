@@ -12,7 +12,7 @@ def init(seed,N,M,D):
   return X
 
 
-def Sampling(smpl, sample_size, burn=1000, method='Quantum', init_config=[], compute_transition=False):
+def Sampling(smpl, sample_size, burn=1000, mode='', method='Quantum', init_config=[], compute_transition=False):
   N = smpl.N
   one_body_coeffs = -smpl.poly[1:1+N]     #np.random.rand(n)
   two_body_coeffs = -smpl.poly[1+N:]      #np.random.rand(n**2)
@@ -26,14 +26,14 @@ def Sampling(smpl, sample_size, burn=1000, method='Quantum', init_config=[], com
   sample_list = []
 
   if len(init_config)==0:
-    s = np.random.choice([1,-1],size=N)
+    s = np.random.choice([1.,-1.],size=N)
   else: s = init_config
 
   for k in range(burn):
-    s = Proposal_object.generate_MCMC_trajectories(s)
+    s = Proposal_object.generate_MCMC_trajectories(s, mode)
 
   for k in range(sample_size):
-    s = Proposal_object.generate_MCMC_trajectories(s)
+    s = Proposal_object.generate_MCMC_trajectories(s, mode)
     key = Proposal_object.get_spinconfig_to_int(s)
     if key in prob_dict: prob_dict[key] +=1
     else: prob_dict[key] = 1

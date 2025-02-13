@@ -70,7 +70,6 @@ def Trotter_circuit_builder(N: int, k:int, alpha:float,
     kernel = cudaq.make_kernel()
     qreg = kernel.qalloc(N)
 
-    assert(len(initial_config)==N), "initial config array is not same length as number of spins"
     for i in range(N):
         if initial_config[i] == 1: kernel.x(qreg[i])
                 

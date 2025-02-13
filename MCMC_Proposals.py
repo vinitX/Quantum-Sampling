@@ -208,7 +208,7 @@ class All_proposals:
         return Transition_mat
 
     ''' We don't need to store transition matrix to generate trajectories. But it proves to be more efficient when working on a classical simulator as it stores all the possible transitions at once, instead of running quantum circuit multiple times.'''
-    def generate_MCMC_trajectories(self, init_config:np.ndarray, transition_matrix=[]):
+    def generate_MCMC_trajectories(self, init_config:np.ndarray, mode='', transition_matrix=[]):
         if len(transition_matrix) == 0: 
             N = self.no_spins
             alpha = self.computing_norm_ratio()
@@ -235,8 +235,10 @@ class All_proposals:
             for qubit in range(N):
                 theta[qubit], phi[qubit], lam[qubit] = angle_list[qubit]
 
-            counts = cudaq.sample(Trotter_circuit, N, k, alpha, gamma, time_delta, theta, phi, lam, J, init_config, shots_count=1)
-            #counts = Trotter_circuit_builder(N, k, alpha, gamma, time_delta, theta, phi, lam, J, init_config, shots_count=1)
+            if mode=='kernel':
+                counts = cudaq.sample(Trotter_circuit, N, k, alpha, gamma, time_delta, theta, phi, lam, J, init_config, shots_count=1)
+            elif mode=='builder':
+                counts = Trotter_circuit_builder(N, k, alpha, gamma, time_delta, theta, phi, lam, J, init_config, shots_count=1)
             
             for key, value in counts.items():
                 if value == 1: 
