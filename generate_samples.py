@@ -50,13 +50,13 @@ def Sampling(smpl, sample_size, burn=1000, mode='', method='Quantum', init_confi
 
 
 
-def main(N, sample_size, seed, dir):
+def main(N, mode, sample_size, seed, dir):
     X=init(seed,N,M=N,D=0)/40
     smpl = Sampling_Quantum_vectorized(X,N,M=N,D=0,beta=1)
 
-    prob_dict, sample_list = Sampling(smpl, sample_size, burn=sample_size//10)
+    prob_dict, sample_list = Sampling(smpl, sample_size, mode=mode, burn=sample_size//10)
 
-    np.save(dir+'TFIM_samples_N='+str(N)+'.npy', sample_list)
+    np.save(dir+'TFIM_samples_mode='+mode+'_N='+str(N)+'.npy', sample_list)
 
     import pickle
     with open(dir+'TFIM_prob_dict_N='+str(N)+'.pkl', 'wb') as f:
@@ -67,9 +67,10 @@ import argparse
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('N', type=int, help='The system size')
-    parser.add_argument('--sample_size', type=int, default=1000)
+    parser.add_argument('mode', type=str, help='\{kernel, builder, or qiskit\}')
+    parser.add_argument('--sample_size', type=int, default=100)
     parser.add_argument('--seed', type=int, default=1)
     parser.add_argument('--dir', type=str, default='Data/')
 
     args = parser.parse_args()
-    main(args.N, args.sample_size, args.seed, args.dir)
+    main(args.N, args.mode, args.sample_size, args.seed, args.dir)
