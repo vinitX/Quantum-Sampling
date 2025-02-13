@@ -49,9 +49,9 @@ class Sampling_Quantum_vectorized():
     return int(key)
 
 
-  # def enum(self,N):
-  #   N=self.N
-  #   return self.key_to_spin(np.arange(2**N))
+  def enum(self,N):
+    N=self.N
+    return self.key_to_spin(np.arange(2**N))
 
   def key_to_spin(self, key):
     N = self.N
@@ -195,8 +195,7 @@ class Sampling_Quantum_vectorized():
       #print(phi)
 
     #Appending Random Cofigs.
-    random_keys = np.random.randint(0, 2**N, size=num_rand)
-    #random_keys = np.random.choice(np.arange(2**N),size=num_rand,replace=False)
+    random_keys = np.random.choice(np.arange(2**N),size=num_rand,replace=False)
     result_keys = np.unique(np.concatenate((result_keys, random_keys)))
     #print(len(result_keys))
 
@@ -391,7 +390,7 @@ class Sampling_Quantum_vectorized():
   def sampling(self,H,sample_size=1000,burn=None,algo='Metropolis_uniform',exact_dist=None):
     N=self.N
 
-    if algo=='Exact' and 2**N < sample_size:
+    if algo=='Exact':
       s = self.enum(N)
       prob_dist = self.prob(s)
       prob_dist = prob_dist / np.sum(prob_dist)
@@ -401,6 +400,8 @@ class Sampling_Quantum_vectorized():
 
 
     s=np.random.choice([1,-1],size=N)
+
+    prob_mat = np.zeros(2**N)
 
     if burn is None:
       burn = sample_size//10
@@ -412,34 +413,13 @@ class Sampling_Quantum_vectorized():
     #print("\t\t\t\t\t\t Burn Time: ", time.time()-tm)
 
     #tm=time.time()
-    if 2**N < sample_size:
-      prob_mat = np.zeros(2**N)
-
-      for k in range(sample_size):
-        s = self.sampler(s,'Metropolis_uniform')
-        prob_mat[self.spin_to_key_nv(s)]+=1
-      prob_mat = prob_mat / np.sum(prob_mat)
-      return prob_mat
-
-    else: 
-      prob_dict = {}
-
-      for k in range(sample_size):
-        s = self.sampler(s,'Metropolis_uniform')
-        key = self.spin_to_key_nv(s)
-        if key in prob_dict: prob_dict[key]+=1
-        else: prob_dict[key]=1
-      
-      for key in prob_dict.keys():
-        prob_dict[key] = prob_dict[key] / sample_size
-
-
-      return prob_dict
+    for k in range(sample_size):
+      s = self.sampler(s,'Metropolis_uniform')
+      prob_mat[self.spin_to_key_nv(s)]+=1
+    prob_mat = prob_mat / np.sum(prob_mat)
     #print("\t\t\t\t\t\t Metropolis Sampling: ", time.time()-tm)
 
-    
-  
-    
+    return prob_mat
 
 
   def Energy_exact(self,H):
@@ -447,19 +427,11 @@ class Sampling_Quantum_vectorized():
     rho_diag = self.prob(s) * self.kernel(s)
     E = np.sum(rho_diag * self.local_energy(H,s)) / np.sum(rho_diag)
     return np.real(E)
-  
-  def Energy_sampling(self,H,prob_dict={},prob_mat=[]):
-    if len(prob_dict) > 0:
-      keys = np.array(list(prob_dict.keys()))
-      s = self.key_to_spin(keys)
-      prob_mat = np.array(list(prob_dict.values()))
-    elif len(prob_mat) > 0:
-      s = self.enum(self.N)
-    else: 
-      print("Provide either a dictionary or a vector of probabilities")
-      return 0
 
-    #tm=time.time()    
+
+  def Energy_sampling(self,H,prob_mat,samples=None):
+    #tm=time.time()
+    s = self.enum(self.N)
     local_energies = self.local_energy(H,s)
     kernels = self.kernel(s)
     #print("\t\t\t\t\t\t Local Energy / Kernel Computation: ", time.time()-tm)
@@ -603,18 +575,7 @@ class Sampling_Quantum_vectorized():
     return grad/np.sum(rho_diag) - E * derivative_op_diag   #np.real()
 
 
-
-  def grad_Sampling(self,H,prob_dict={},prob_mat=[],Energy=None):
-    if len(prob_dict) > 0:
-      keys = np.array(list(prob_dict.keys()))
-      s = self.key_to_spin(keys)
-      prob_mat = np.array(list(prob_dict.values()))
-    elif len(prob_mat) > 0:
-      s = self.enum(self.N)
-    else: 
-      print("Provide either a dictionary or a vector of probabilities")
-      return 0
-
+  def grad_Sampling(self,H,prob_mat,Energy=None,exact_dist=None):
     N=self.N
 
     derivative_op_diag = np.zeros(len(self.X),dtype=complex)
@@ -622,6 +583,7 @@ class Sampling_Quantum_vectorized():
     grad = np.zeros(len(self.X),dtype=complex)
 
     #tm=time.time()
+    s = self.enum(N)
     local_energies = self.local_energy(H,s)
     kernels = self.kernel(s)
 

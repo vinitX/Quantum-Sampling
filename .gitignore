@@ -1,0 +1,24 @@
+# chk file
+*.chk
+
+# dat file
+*.dat
+
+# out file
+*.out
+
+# json file
+*.json
+
+# log file
+*.log
+
+# txt file
+*.txt
+
+# pickle file
+*.pkl
+
+
+# npy file
+*.npy
