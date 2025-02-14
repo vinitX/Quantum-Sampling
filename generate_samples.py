@@ -1,6 +1,6 @@
 from Sampling_Quantum import *
 from MCMC_Proposals import *
-#from get_conn import get_conn
+from Sampling_Circuits import *
 
 import numpy as np
 import time
@@ -20,6 +20,10 @@ def Sampling(smpl, sample_size, burn=1000, mode='', method='Quantum', init_confi
 
   Proposal_object = All_proposals(inverse_temp=beta, one_body_coeffs=one_body_coeffs,
               two_body_coeffs = two_body_coeffs)
+  
+  if mode=='qiskit':
+    fixed_circuit = Fixed_Trotter_qiskit(N, k, alpha, gamma, time_delta, theta, phi, lam, J)
+    transpiled_fixed_circuit = transpile(fixed_circuit, backend)
   
   tm = time.time()
   prob_dict = {}
@@ -66,6 +70,11 @@ def main(N, mode, sample_size, seed, dir):
 import argparse
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    tm = time.time()
+    #two_qubit_gate.compile()
+    Fixed_Trotter_circuit.compile()
+    #Trotter_circuit.compile()
+    print("Compilation Time: ", time.time()-tm)
     parser.add_argument('N', type=int, help='The system size')
     parser.add_argument('mode', type=str, help='\{kernel, builder, or qiskit\}')
     parser.add_argument('--sample_size', type=int, default=100)
@@ -73,4 +82,6 @@ if __name__ == "__main__":
     parser.add_argument('--dir', type=str, default='Data/')
 
     args = parser.parse_args()
+    tm=time.time()
     main(args.N, args.mode, args.sample_size, args.seed, args.dir)
+    print("Total Time: ", time.time()-tm)

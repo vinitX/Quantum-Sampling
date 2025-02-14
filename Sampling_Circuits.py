@@ -18,7 +18,47 @@ def two_qubit_gate(angle:float, qubit_1: cudaq.qubit, qubit_2: cudaq.qubit):  # 
 
 
 @cudaq.kernel
+def Fixed_Trotter_circuit(qreg:cudaq.qview, N: int, k:int, alpha:float,
+                    gamma:float, time_delta: float, theta:np.ndarray, phi:np.ndarray, lam:np.ndarray, J:np.ndarray):  #list[int]
+    # This is the actual Trotter circuit. Here the circuit construction for Trotterized version of time evolution happens
+    # k : Trotter repeat length
+
+    for _ in range(k-1):
+        for qubit in range(N):
+            u3(theta[qubit], phi[qubit], lam[qubit], qreg[qubit])
+
+        for i in range(N):
+            for j in range(i + 1, N): 
+                angle = 2*J[(N-1-i)*N + N-1-j]*(1-gamma)*alpha*time_delta
+                two_qubit_gate(angle, qreg[i], qreg[j])
+
+    for qubit in range(N):
+        u3(theta[qubit], phi[qubit], lam[qubit], qreg[qubit])
+
+
+@cudaq.kernel
 def Trotter_circuit(N: int, k:int, alpha:float,
+                    gamma:float, time_delta: float, theta:np.ndarray, phi:np.ndarray, lam:np.ndarray, J:np.ndarray, initial_config:np.ndarray):  #list[int]
+    # This is the actual Trotter circuit. Here the circuit construction for Trotterized version of time evolution happens
+    # k : Trotter repeat length
+
+    qreg=cudaq.qvector(N)
+
+    # assert(len(initial_config)==N), "initial config array is not same length as number of spins"
+    for i in range(N):
+        if int(initial_config[i]) == 1: x(qreg[i])                
+        #circuit.x(qreg[N-1-np.argwhere(return_array==1).flatten()])  # Qiskit follows endian order with least sig bit as qubit[0] on top which is why we have N-1-index
+    
+    Fixed_Trotter_circuit(qreg, N, k, alpha, gamma, time_delta, theta, phi, lam, J)
+
+
+
+
+
+#Old Kernel method
+
+@cudaq.kernel
+def Trotter_circuit_kernel(N: int, k:int, alpha:float,
                     gamma:float, time_delta: float, theta:np.ndarray, phi:np.ndarray, lam:np.ndarray, J:np.ndarray, initial_config:np.ndarray):  #list[int]
     # This is the actual Trotter circuit. Here the circuit construction for Trotterized version of time evolution happens
     # k : Trotter repeat length
@@ -41,6 +81,10 @@ def Trotter_circuit(N: int, k:int, alpha:float,
 
     for qubit in range(N):
         u3(theta[qubit], phi[qubit], lam[qubit], qreg[qubit])
+
+
+
+
 
 
 

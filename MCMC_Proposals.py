@@ -1,5 +1,6 @@
 import numpy as np
 import scipy
+import time
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -14,6 +15,7 @@ from Sampling_Circuits import *
 
 from qiskit_circuits import *
 from qiskit_aer import AerSimulator 
+from qiskit.compiler import transpile
 
 # def Euler_angle_decomposition_old(unitary:np.ndarray):
 #     #Given a 2*2 unitary matrix as np.array, this function computes the Euler angles (theta, phi, lambda) required
@@ -58,6 +60,10 @@ class All_proposals:
         self.model_instance_one_body = kwargs['one_body_coeffs']
 
         self.model_instance_two_body  =  np.reshape(np.array(kwargs['two_body_coeffs']), (self.no_spins, self.no_spins), order='F')
+
+        # tm = time.time()
+        # Fixed_Trotter_circuit.compile()
+        # print("Compilation Time: ", time.time()-tm)
 
 
     def get_energy_array(self):
@@ -211,7 +217,7 @@ class All_proposals:
         return Transition_mat
 
     ''' We don't need to store transition matrix to generate trajectories. But it proves to be more efficient when working on a classical simulator as it stores all the possible transitions at once, instead of running quantum circuit multiple times.'''
-    def generate_MCMC_trajectories(self, init_config:np.ndarray, mode='', transition_matrix=[]):
+    def compute_angles(self,mode)
         if len(transition_matrix) == 0: 
             N = self.no_spins
             alpha = self.computing_norm_ratio()
@@ -219,9 +225,9 @@ class All_proposals:
             time_delta = 0.5
             #gamma_array, gamma_step = self.scalar_gamma_sampling(sampling_type="discrete")
             gamma = 0.42
-            time = 12
+            tot_time = 12
 
-            k=int(time/time_delta)
+            k=int(tot_time/time_delta)
 
             l = self.model_instance_one_body
             J = np.reshape(self.model_instance_two_body, -1)
@@ -238,16 +244,27 @@ class All_proposals:
             for qubit in range(N):
                 theta[qubit], phi[qubit], lam[qubit] = angle_list[qubit]
 
+        if mode=='qiskit':
+            fixed_circuit = Fixed_Trotter_qiskit(N, k, alpha, gamma, time_delta, theta, phi, lam, J)
+            transpiled_fixed_circuit = transpile(fixed_circuit)
+
+        return N, k, alpha, gamma, time_delta, theta, phi, lam, J
+        
+    def generate_MCMC_trajectories(self, init_config:np.ndarray, mode='', transition_matrix=[]):
+        N, k, alpha, gamma, time_delta, theta, phi, lam, J = self.compute_angles()
+
+        if len(transition_matrix) == 0: 
             if mode=='kernel':
                 counts = cudaq.sample(Trotter_circuit, N, k, alpha, gamma, time_delta, theta, phi, lam, J, init_config, shots_count=1)
             elif mode=='builder':
                 counts = Trotter_circuit_builder(N, k, alpha, gamma, time_delta, theta, phi, lam, J, init_config, shots_count=1)
             elif mode=='qiskit':
+                
                 circuit = Trotter_circuit_qiskit(N, k, alpha, gamma, time_delta, theta, phi, lam, J.reshape((N,N)), init_config)
                 circuit.measure_all()
-                #simulator = AerSimulator()
-                simulator = AerSimulator(method="matrix_product_state")
-                simulator.set_options(matrix_product_state_max_bond_dimension=16)  
+                simulator = AerSimulator()
+                #simulator = AerSimulator(method="matrix_product_state")
+                #simulator.set_options(matrix_product_state_max_bond_dimension=16)  
                 result = simulator.run(circuit, shots=1).result()
                 counts = result.get_counts(circuit)
 
