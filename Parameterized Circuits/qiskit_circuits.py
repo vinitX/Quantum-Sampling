@@ -34,9 +34,18 @@ def two_qubit_gate_qiskit(circuit, angle:float, qubit_1:int, qubit_2:int, mode="
         circuit.h(qubit_2)
     return circuit
 
+def initialize_from_bitstring(qc, N, initial_config):
+    for i in range(N):
+        if int(initial_config[i]) == 1: qc.x(N-1-i)   # Qiskit follows endian order with least sig bit as qubit[0] on top which is why we have no_spins-1-index
 
-def Fixed_Trotter_qiskit(N, k, alpha, gamma, time_delta, theta, phi, lam, J,):
-    circuit = QuantumCircuit(N)
+
+def Trotter_circuit_qiskit(N, k, alpha, gamma, time_delta, theta, phi, lam, J, initial_config):
+    # This is the actual Trotter circuit. Here the circuit construction for Trotterized version of time evolution happens
+
+    #qreg = QuantumRegister(N)
+    #creg = ClassicalRegister(N)
+    circuit = QuantumCircuit(N) #, creg)
+    initialize_from_bitstring(circuit, N, initial_config)
 
     for _ in range(k-1):
         for qubit in np.arange(N):
@@ -51,22 +60,5 @@ def Fixed_Trotter_qiskit(N, k, alpha, gamma, time_delta, theta, phi, lam, J,):
 
     for qubit in np.arange(N):
         circuit.u(theta[qubit],phi[qubit],lam[qubit], qubit)
-
-    return circuit
-
-
-def initialize_from_bitstring(qc, N, initial_config):
-    for i in range(N):
-        if int(initial_config[i]) == 1: qc.x(N-1-i)   # Qiskit follows endian order with least sig bit as qubit[0] on top which is why we have no_spins-1-index
-
-
-def Trotter_circuit_qiskit(N, fixed_circuit, initial_config):
-    # This is the actual Trotter circuit. Here the circuit construction for Trotterized version of time evolution happens
-
-    #qreg = QuantumRegister(N)
-    #creg = ClassicalRegister(N)
-    circuit = QuantumCircuit(N) #, creg)
-    initialize_from_bitstring(circuit, N, initial_config)
-    circuit.compose(fixed_circuit, inplace=True)
 
     return circuit

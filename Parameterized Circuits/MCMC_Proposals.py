@@ -217,71 +217,37 @@ class All_proposals:
         return Transition_mat
 
     ''' We don't need to store transition matrix to generate trajectories. But it proves to be more efficient when working on a classical simulator as it stores all the possible transitions at once, instead of running quantum circuit multiple times.'''
-    def compute_angles(self,mode)
-        if len(transition_matrix) == 0: 
-            N = self.no_spins
-            alpha = self.computing_norm_ratio()
-            #time_array, time_delta_step = self.scalar_time_sampling(sampling_type="discrete")
-            time_delta = 0.5
-            #gamma_array, gamma_step = self.scalar_gamma_sampling(sampling_type="discrete")
-            gamma = 0.42
-            tot_time = 12
+    def calculate_angles(self):
+        N = self.no_spins
+        alpha = self.computing_norm_ratio()
+        #time_array, time_delta_step = self.scalar_time_sampling(sampling_type="discrete")
+        time_delta = 0.5
+        #gamma_array, gamma_step = self.scalar_gamma_sampling(sampling_type="discrete")
+        gamma = 0.42
 
-            k=int(tot_time/time_delta)
+        l = self.model_instance_one_body
+        J = self.model_instance_two_body
 
-            l = self.model_instance_one_body
-            J = np.reshape(self.model_instance_two_body, -1)
+        angles_u3 = np.zeros(3*N)
+        for qubit in range(N):
+            coeff = -alpha*(1-gamma)*l[N-1-qubit]
+            one_body_Ham = gamma * spin.x(0) + coeff * spin.z(0)
+            angles_u3[3*qubit: 3*(qubit+1)] = list(Euler_angle_decomposition(scipy.linalg.expm(-1.0j*time_delta*one_body_Ham.to_matrix())))   # always 2*2 so no problem of exponentiation, storage
 
-            angle_list = []
-            for qubit in range(N):
-                coeff = -alpha*(1-gamma)*l[N-1-qubit]
-                one_body_Ham = gamma * spin.x(0) + coeff * spin.z(0)
-                angle_list.append(list(Euler_angle_decomposition(scipy.linalg.expm(-1.0j*time_delta*one_body_Ham.to_matrix()))))   # always 2*2 so no problem of exponentiation, storage
+        angles_2q = np.zeros((N,N))
+        for i in range(N):
+            for j in range(i+1, N):
+                angles_2q[i,j] = 2*J[N-1-i, N-1-j]*(1-gamma)*alpha*time_delta
 
-            theta = np.zeros(N)
-            phi = np.zeros(N)
-            lam = np.zeros(N)
-            for qubit in range(N):
-                theta[qubit], phi[qubit], lam[qubit] = angle_list[qubit]
+        return angles_u3, angles_2q
 
-        if mode=='qiskit':
-            fixed_circuit = Fixed_Trotter_qiskit(N, k, alpha, gamma, time_delta, theta, phi, lam, J)
-            transpiled_fixed_circuit = transpile(fixed_circuit)
 
-        return N, k, alpha, gamma, time_delta, theta, phi, lam, J
-        
-    def generate_MCMC_trajectories(self, init_config:np.ndarray, mode='', transition_matrix=[]):
-        N, k, alpha, gamma, time_delta, theta, phi, lam, J = self.compute_angles()
+    def generate_MCMC_trajectories(self, init_config, transition_matrix):
+        number_starting_config = self.get_spinconfig_to_int(init_config)
+        #This function given a transition matrix (local, uniform, quantum, Haar) anything..can choose a configuration with the prob given along rows of transition matrix
+        number_chosen = np.random.choice(np.arange(2**self.no_spins), p=transition_matrix[:,number_starting_config])
+        return self.get_int_to_spinconfig(number_chosen, self.no_spins)
 
-        if len(transition_matrix) == 0: 
-            if mode=='kernel':
-                counts = cudaq.sample(Trotter_circuit, N, k, alpha, gamma, time_delta, theta, phi, lam, J, init_config, shots_count=1)
-            elif mode=='builder':
-                counts = Trotter_circuit_builder(N, k, alpha, gamma, time_delta, theta, phi, lam, J, init_config, shots_count=1)
-            elif mode=='qiskit':
-                
-                circuit = Trotter_circuit_qiskit(N, k, alpha, gamma, time_delta, theta, phi, lam, J.reshape((N,N)), init_config)
-                circuit.measure_all()
-                simulator = AerSimulator()
-                #simulator = AerSimulator(method="matrix_product_state")
-                #simulator.set_options(matrix_product_state_max_bond_dimension=16)  
-                result = simulator.run(circuit, shots=1).result()
-                counts = result.get_counts(circuit)
-
-            for key, value in counts.items():
-                if value == 1: 
-                    final_config = key
-
-            res = [1.0 if s == '1' else -1.0 for s in final_config]
-            
-            return np.array(res)
-
-        else: 
-            number_starting_config = self.get_spinconfig_to_int(init_config)
-            #This function given a transition matrix (local, uniform, quantum, Haar) anything..can choose a configuration with the prob given along rows of transition matrix
-            number_chosen = np.random.choice(np.arange(2**self.no_spins), p=transition_matrix[:,number_starting_config])
-            return self.get_int_to_spinconfig(number_chosen, self.no_spins)
-    
 
 
     def get_abs_spectral_gap_from_transition_mat(self, Transition_mat):
