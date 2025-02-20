@@ -13,9 +13,9 @@ import cudaq
 from cudaq import spin
 from Sampling_Circuits import *
 
-from qiskit_circuits import *
-from qiskit_aer import AerSimulator 
-from qiskit.compiler import transpile
+# from qiskit_circuits import *
+# from qiskit_aer import AerSimulator 
+# from qiskit.compiler import transpile
 
 # def Euler_angle_decomposition_old(unitary:np.ndarray):
 #     #Given a 2*2 unitary matrix as np.array, this function computes the Euler angles (theta, phi, lambda) required
