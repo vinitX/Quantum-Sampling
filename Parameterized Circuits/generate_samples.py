@@ -5,6 +5,9 @@ from Sampling_Circuits import *
 import numpy as np
 import time
 
+import cudaq
+#cudaq.set_target('tensornet')
+
 def init(seed,N,M,D):
   np.random.seed(seed)
   X=np.random.randn(N+M+N*M+N*D+D+N*N)+1j*np.random.randn(N+M+N*M+N*D+D+N*N)
@@ -59,16 +62,16 @@ def Sampling(smpl, sample_size, burn, init_config=[], compute_transition=False):
 
   angles_u3, angles_2q = Proposal_object.calculate_angles()
 
-  for k in range(burn):
+  for _ in range(burn):
     angles_ry = np.pi*(s + 1)/2
-    #counts = cudaq.sample(Trotter_circuit, N, k, angles_ry, angles_u3, np.reshape(angles_2q,-1), shots_count=1)
-    counts = Trotter_circuit_builder(N, k, angles_ry, angles_u3, np.reshape(angles_2q,-1), shots_count=1)
+    counts = cudaq.sample(Trotter_circuit, N, k, angles_ry, angles_u3, np.reshape(angles_2q,-1), shots_count=1)
+    #counts = Trotter_circuit_builder(N, k, angles_ry, angles_u3, np.reshape(angles_2q,-1), shots_count=1)
     s = dict_to_res(counts)
   
-  for k in range(sample_size):
+  for _ in range(sample_size):
     angles_ry = np.pi*(s + 1)/2
-    #counts = cudaq.sample(Trotter_circuit, N, k, angles_ry, angles_u3, np.reshape(angles_2q,-1), shots_count=1)
-    counts = Trotter_circuit_builder(N, k, angles_ry, angles_u3, np.reshape(angles_2q,-1), shots_count=1)
+    counts = cudaq.sample(Trotter_circuit, N, k, angles_ry, angles_u3, np.reshape(angles_2q,-1), shots_count=1)
+    #counts = Trotter_circuit_builder(N, k, angles_ry, angles_u3, np.reshape(angles_2q,-1), shots_count=1)
     s = dict_to_res(counts)
     
     key = Proposal_object.get_spinconfig_to_int(s)

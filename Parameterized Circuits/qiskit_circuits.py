@@ -34,31 +34,29 @@ def two_qubit_gate_qiskit(circuit, angle:float, qubit_1:int, qubit_2:int, mode="
         circuit.h(qubit_2)
     return circuit
 
-def initialize_from_bitstring(qc, N, initial_config):
+def initialize_from_bitstring(qc, N, angles_ry):
     for i in range(N):
-        if int(initial_config[i]) == 1: qc.x(N-1-i)   # Qiskit follows endian order with least sig bit as qubit[0] on top which is why we have no_spins-1-index
+        qc.ry(angles_ry[i], i)
 
-
-def Trotter_circuit_qiskit(N, k, alpha, gamma, time_delta, theta, phi, lam, J, initial_config):
+def Trotter_circuit_qiskit(N, k, angles_ry, angles_u3, angles_2q):
     # This is the actual Trotter circuit. Here the circuit construction for Trotterized version of time evolution happens
 
     #qreg = QuantumRegister(N)
     #creg = ClassicalRegister(N)
     circuit = QuantumCircuit(N) #, creg)
-    initialize_from_bitstring(circuit, N, initial_config)
+    initialize_from_bitstring(circuit, N, angles_ry)
 
     for _ in range(k-1):
-        for qubit in np.arange(N):
-            circuit.u(theta[qubit],phi[qubit],lam[qubit], qubit)
+        for i in np.arange(N):
+            circuit.u(angles_u3[i*3], angles_u3[i*3+1], angles_u3[i*3+2], i)
 
-        for qubit_tuple in list(itertools.combinations(np.arange(N),r=2)):
-            circuit = two_qubit_gate_qiskit(circuit,
-                                2*J[qubit_tuple[0],qubit_tuple[1]]*(1-gamma)*alpha*time_delta,
-                                qubit_tuple[0], qubit_tuple[1], mode="no_decomposition")
-                                # Qiskit follows endian order with least sig bit as qubit[0] on top which is why we have no_spins-1-index
+        for i in range(N):
+            for j in range(i + 1, N):
+                circuit = two_qubit_gate_qiskit(circuit, angles_2q[i,j], i, j, mode="no_decomposition")
+
         circuit.barrier()
 
-    for qubit in np.arange(N):
-        circuit.u(theta[qubit],phi[qubit],lam[qubit], qubit)
-
+    for i in np.arange(N):
+        circuit.u(angles_u3[i*3], angles_u3[i*3+1], angles_u3[i*3+2], i)
+        
     return circuit
