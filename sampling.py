@@ -31,6 +31,8 @@ def Trotter_circuit(N: int, k:int, angles_ry:np.ndarray, angles_u3:np.ndarray, a
     for i in range(N):
         u3(angles_u3[i*3], angles_u3[i*3+1], angles_u3[i*3+2], qreg[i])
 
+    mz(qreg)
+    
 
 def dict_to_res(counts):
   for key, value in counts.items():
