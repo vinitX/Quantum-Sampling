@@ -4,6 +4,8 @@ import time
 import jax
 import jax.numpy as jnp
 
+print(jax.devices())
+
 tc.set_backend("jax")  # Use JAX backend for JIT performance
 backend = tc.backend
 
@@ -53,13 +55,14 @@ def main(N, sample_size):
     angles_u3 = backend.convert_to_tensor(np.random.uniform(0, 2 * np.pi, 3 * N))
     angles_2q = backend.convert_to_tensor(np.random.uniform(0, 2 * np.pi, (N, N)))
     
+    tim = time.time()
     for idx in range(sample_size):
-        tim = time.time()
+        
         angles_ry = backend.convert_to_tensor(np.pi * (s + 1) / 2)
         bits = trotter_circuit_fn(angles_ry, angles_u3, angles_2q)  # JIT-compiled function returns bits
         s = bits * 2 - 1 
     
-        print(idx, "\t", f"{time.time()-tim:.{2}e}")
+    print("Sampling Time: ", time.time()-tim)
 
 
 import argparse
