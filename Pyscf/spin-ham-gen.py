@@ -4,6 +4,7 @@ import argparse, json
 import cudaq
 import numpy as np
 import hamiltonian
+import pickle
 
 #cudaq.set_target('nvidia', option = 'fp64')
 
@@ -79,6 +80,12 @@ for p in range(qubits_num):
 # Compute the spin hamiltonian.
 tolerance=args.cutoff
 spin_ham=hamiltonian.jordan_wigner_fermion(h1e,h2e,constant,tolerance)
+#print(spin_ham)
+
+ham_str = spin_ham.to_string()
+
+with open("ZnO.txt", "w") as file:
+    file.write(ham_str)
 
 if verbose: print('Total number of pauli hamiltonian terms: ',spin_ham.get_term_count(), flush=True)
 

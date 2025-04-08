@@ -1,4 +1,4 @@
-from Sampling_Quantum import *
+from RBM_surrogate import *
 from MCMC_Proposals_qiskit import *
 
 import numpy as np

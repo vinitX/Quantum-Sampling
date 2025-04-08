@@ -9,7 +9,7 @@ import time
 import matplotlib.pyplot as plt
 
 
-class RBM():
+class RBM_surrogate():
   def __init__(self,X,N,M,D,beta=1,vv=False):
     self.N=N
     self.M=M
@@ -355,21 +355,6 @@ class RBM():
     return np.array(x_new), np.array(x_iter)
 
 
-  def sampler(self,s,algo='Metropolis_uniform'):
-    N = self.N
-    if algo=='Metropolis_uniform':
-      p1 = self.prob_nv(s)
-
-      s_new = np.random.choice([1,-1],size=N)
-      p2 = self.prob_nv(s_new)
-
-      accept = min(1.0,p2/p1)
-
-      if np.random.rand()<accept:
-        return s_new
-      else: return s
-
-
   def local_energy(self,H,s,H_terms=None):
     N = self.N
     H_terms = 2*N  
@@ -387,57 +372,6 @@ class RBM():
     rho_conn = self.reduced_density_matrix(s,s2)
 
     return np.real(np.sum(val*rho_conn,axis=1)/self.reduced_density_matrix(s,np.reshape(s,(len(s),1,N)))[:,0])
-
-
-  def sampling(self,H,sample_size=1000,burn=None,algo='Metropolis_uniform',exact_dist=None):
-    N=self.N
-
-    if algo=='Exact' and 2**N < sample_size:
-      s = self.enum(N)
-      prob_dist = self.prob(s)
-      prob_dist = prob_dist / np.sum(prob_dist)
-      samples = np.random.choice(np.arange(2**N), size=sample_size, p=prob_dist)
-      prob_mat, _ = np.histogram(samples, bins=np.arange(2**N+1))
-      return prob_mat/sample_size
-
-
-    s=np.random.choice([1,-1],size=N)
-
-    if burn is None:
-      burn = sample_size//10
-
-    #tm=time.time()
-    for k in range(burn):
-      s = self.sampler(s,algo='Metropolis_uniform')
-    #print("\n#Burn Complete \n\n")
-    #print("\t\t\t\t\t\t Burn Time: ", time.time()-tm)
-
-    #tm=time.time()
-    if 2**N < sample_size:
-      prob_mat = np.zeros(2**N)
-
-      for k in range(sample_size):
-        s = self.sampler(s,'Metropolis_uniform')
-        prob_mat[self.spin_to_key_nv(s)]+=1
-      prob_mat = prob_mat / np.sum(prob_mat)
-      return prob_mat
-
-    else: 
-      prob_dict = {}
-
-      for k in range(sample_size):
-        s = self.sampler(s,'Metropolis_uniform')
-        key = self.spin_to_key_nv(s)
-        if key in prob_dict: prob_dict[key]+=1
-        else: prob_dict[key]=1
-      
-      for key in prob_dict.keys():
-        prob_dict[key] = prob_dict[key] / sample_size
-
-
-      return prob_dict
-    #print("\t\t\t\t\t\t Metropolis Sampling: ", time.time()-tm)
-
 
 
 
