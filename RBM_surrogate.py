@@ -10,24 +10,40 @@ import matplotlib.pyplot as plt
 
 
 class RBM_surrogate():
-  def __init__(self,X,N,M,D,beta=1,vv=False):
+  def __init__(self,N,M,D=0,X=[],seed=1,beta=1,vv=False,dtype='complex'):
     self.N=N
     self.M=M
     self.D=D
     self.beta=beta
-
-    l = len(X)//2
-
-    self.X=X
-    self.a=X[:N]+1j*X[l:l+N]
-    self.b=X[N:N+M]+1j*X[l+N:l+N+M]
-    self.w=np.reshape(X[N+M:N+M+N*M]+1j*X[l+N+M:l+N+M+N*M],(N,M))
-    self.u=np.reshape(X[N+M+N*M:N+M+N*M+N*D]+1j*X[l+N+M+N*M:l+N+M+N*M+N*D],(N,D))
-    self.d=X[N+M+N*M+N*D:N+M+N*M+N*D+D]+1j*X[l+N+M+N*M+N*D:l+N+M+N*M+N*D+D]
-    self.c=np.reshape(X[N+M+N*M+N*D+D:l]+1j*X[l+N+M+N*M+N*D+D:],(N,N))
-
     self.vv = vv
-    if self.vv==False: c=np.zeros((N,N))
+    self.c = None
+    np.random.seed(seed)
+
+    if len(X) == 0: 
+        if dtype=='complex': self.X = X = np.random.randn(2*(N+M+N*M)) / 10
+        elif dtype=='real': self.X = X = np.random.randn(N+M+N*M) / 10
+    else: 
+        self.X = X
+
+    if dtype=='complex':
+      l = len(X)//2
+      self.a=X[:N]+1j*X[l:l+N]
+      self.b=X[N:N+M]+1j*X[l+N:l+N+M]
+      self.w=np.reshape(X[N+M:N+M+N*M]+1j*X[l+N+M:l+N+M+N*M],(N,M))
+      self.u=np.reshape(X[N+M+N*M:N+M+N*M+N*D]+1j*X[l+N+M+N*M:l+N+M+N*M+N*D],(N,D))
+      self.d=X[N+M+N*M+N*D:N+M+N*M+N*D+D]+1j*X[l+N+M+N*M+N*D:l+N+M+N*M+N*D+D]
+      if vv==True: 
+        self.c=np.reshape(X[N+M+N*M+N*D+D:l]+1j*X[l+N+M+N*M+N*D+D:],(N,N))
+
+    elif dtype=='real': 
+      self.a=X[:N]
+      self.b=X[N:N+M]
+      self.w=np.reshape(X[N+M:N+M+N*M],(N,M))
+      self.u=np.reshape(X[N+M+N*M:N+M+N*M+N*D],(N,D))
+      self.d=X[N+M+N*M+N*D:N+M+N*M+N*D+D]
+      if vv==True: 
+        self.c=np.reshape(X[N+M+N*M+N*D+D:l],(N,N))
+
 
   def get_params(self):
     return self.a,self.b,self.w,self.u,self.d,self.c
@@ -355,24 +371,12 @@ class RBM_surrogate():
     return np.array(x_new), np.array(x_iter)
 
 
-  def local_energy(self,H,s,H_terms=None):
+  def local_energy(self,H,s):
     N = self.N
-    H_terms = 2*N  
-
-    #tm = time.time()
-    s2 = np.zeros((len(s),H_terms,N))
-    val = np.zeros((len(s),H_terms),dtype=complex)
-    for i in range(len(s)):
-      temp_spin, temp_val = get_conn(H,s[i])
-      s2[i,:len(temp_spin)] = temp_spin
-      val[i,:len(temp_val)] = temp_val
-      #s2[i], val[i] = get_conn(H,s[i])
-    #print("\t\t\t\t\t\t get_conn() run-time: ",time.time()-tm)
-
+    s2, val = get_conn(H,s)
     rho_conn = self.reduced_density_matrix(s,s2)
 
     return np.real(np.sum(val*rho_conn,axis=1)/self.reduced_density_matrix(s,np.reshape(s,(len(s),1,N)))[:,0])
-
 
 
   def Energy_exact(self,H):
@@ -484,21 +488,9 @@ class RBM_surrogate():
       indices = idx-(l+N+M+N*M+N*D+D)
       return 'ic', indices//N, indices%N
 
-  def local_gradient(self,H,s,idx,H_terms=None):
+  def local_gradient(self,H,s,idx):
     N = self.N
-    H_terms = 2*N 
-
-    #tm = time.time()
-    s2 = np.zeros((len(s),H_terms,N))
-    val = np.zeros((len(s),H_terms),dtype=complex)
-    for i in range(len(s)):
-      temp_spin, temp_val = get_conn(H,s[i])
-      s2[i,:len(temp_spin)] = temp_spin
-      val[i,:len(temp_val)] = temp_val
-      #s2[i], val[i] = get_conn(H,s[i])
-    #global total_get_conn_time
-    #total_get_conn_time += (time.time()-tm)
-    #print("\t\t\t\t\t\t get_conn() run-time: ",time.time()-tm)
+    s2, val = get_conn(H,s)
 
     rho_conn = self.reduced_density_matrix(s,s2)
     grad_conn = self.derivative_operator(s,s2,idx)

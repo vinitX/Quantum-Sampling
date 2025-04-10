@@ -1,75 +1,45 @@
 import numpy as np
 import cudaq
 
-def get_conn(hamiltonian: cudaq.SpinOperator, bitstring: np.ndarray):
-    #print(hamiltonian)
-    """
-    Get the connected states and matrix elements for a given bitstring under the action
-    of a Hamiltonian represented as a sum of Pauli words.
+def apply_pauli(op, bitstring):
+    new_bitstring = np.copy(bitstring)
+    phase_factor = np.ones(len(bitstring), dtype=complex)
 
-    Parameters:
-    -----------
-    hamiltonian : cudaq.SpinOperator
-        The Hamiltonian, represented as a sum of Pauli words.
-    bitstring : np.ndarray
-        A binary string (numpy array of 0s and 1s) representing the computational basis state.
+    for qubit_idx in range(len(op)):
+        pauli_op = op[qubit_idx]
 
-    Returns:
-    --------
-    connected_states : list of np.ndarray
-        List of connected bitstrings.
-    matrix_elements : list of complex
-        List of corresponding matrix elements for the connected bitstrings.
-    """
-        
-    #connected_states = []
-    #matrix_elements = []
-    state_dict = {}
+        if pauli_op == 'I':
+            continue
+        elif pauli_op == 'X':
+            new_bitstring[:,qubit_idx] = - new_bitstring[:,qubit_idx]
+        elif pauli_op == 'Y':
+            new_bitstring[:,qubit_idx] = - new_bitstring[:,qubit_idx]
+            phase_factor *= 1j*bitstring[:,qubit_idx]
+        elif pauli_op == 'Z':
+            phase_factor *= bitstring[:,qubit_idx]
+        else:
+            print("Invalid Pauli Operator!")
+            break
+
+    return new_bitstring, phase_factor
+
+
+def get_conn(hamiltonian: cudaq.SpinOperator, bitstring: np.ndarray):  
+    spin_list = []
+    val_list = []
 
     def process_term(term):
-        term_str = term.to_string(False).strip()  # Get Pauli string without coefficient
+        op = term.to_string(False).strip()  # Get Pauli op without coefficient
         coeff = term.get_coefficient()  # Extract the coefficient
 
-        new_bitstring = np.copy(bitstring)
-        phase_factor = 1.0
-        valid = True
-        
+        new_bitstring, phase_factor = apply_pauli(op, bitstring)
 
-        # Parse the term string to identify Pauli operators and their qubit indices
-
-        for qubit_idx in range(len(term_str)):
-            pauli_op = term_str[qubit_idx]
-
-            if pauli_op == 'I':
-                continue
-            elif pauli_op == 'X':
-                new_bitstring[qubit_idx] = - new_bitstring[qubit_idx]
-            elif pauli_op == 'Y':
-                new_bitstring[qubit_idx] = - new_bitstring[qubit_idx]
-                if bitstring[qubit_idx] == 1:
-                    phase_factor *= 1j
-                else:
-                    phase_factor *= -1j
-            elif pauli_op == 'Z':
-                if bitstring[qubit_idx] == -1:
-                    phase_factor *= -1.0
-            else:
-                valid = False
-                print("Invalid Pauli Operator!")
-                break
-
-        #print(coeff, term_str, new_bitstring, phase_factor)
-
-        if tuple(new_bitstring) in state_dict: 
-            state_dict[tuple(new_bitstring)] += coeff * phase_factor
-        else: 
-            state_dict[tuple(new_bitstring)] = coeff * phase_factor
+        spin_list.append(new_bitstring)
+        val_list.append(phase_factor * coeff)
 
     hamiltonian.for_each_term(process_term)
+    
+    spin_list = np.transpose(spin_list, [1,0,2])
+    val_list = np.transpose(val_list)
 
-    ## Make them unique
-    connected_states = [np.array(state) for state in state_dict.keys()]
-    matrix_elements = list(state_dict.values())
-
-    return np.array(connected_states), np.array(matrix_elements)
-
+    return spin_list, val_list

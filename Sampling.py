@@ -1,7 +1,6 @@
 import numpy as np
 from MCMC_Proposals_cudaq import *
 
-
 def spin_to_key_nv(s):
     N=len(s)
     key=0
@@ -84,7 +83,7 @@ def sampler(s,prob_func,algo='Metropolis_uniform'):
         else: return s
 
 
-def sampling(self,N,sample_size=1000,burn=None,algo='Metropolis_uniform'):
+def Sampling(N,sample_size=1000,burn=None,algo='Metropolis_uniform'):
     if algo=='Exact' and 2**N < sample_size:
       s = enum(N)
       prob_dist = prob_RBM(s)

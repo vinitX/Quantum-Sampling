@@ -11,9 +11,9 @@ plt.rcParams["font.weight"] = "bold"
 
 import cudaq
 from cudaq import spin
-from Sampling_Circuits import *
+from sampling_circuits_cudaq import *
 
-from qiskit_circuits import *
+#from qiskit_circuits import *
 from qiskit_aer import AerSimulator 
 from qiskit.compiler import transpile
 
@@ -248,16 +248,16 @@ class All_proposals:
 
             if mode=='kernel':
                 counts = cudaq.sample(Trotter_circuit, N, k, alpha, gamma, time_delta, theta, phi, lam, J, init_config, shots_count=1)
-            elif mode=='builder':
-                counts = Trotter_circuit_builder(N, k, alpha, gamma, time_delta, theta, phi, lam, J, init_config, shots_count=1)
-            elif mode=='qiskit':
-                circuit = Trotter_circuit_qiskit(N, k, alpha, gamma, time_delta, theta, phi, lam, J.reshape((N,N)), init_config)
-                circuit.measure_all()
-                simulator = AerSimulator()
-                #simulator = AerSimulator(method="matrix_product_state")
-                #simulator.set_options(matrix_product_state_max_bond_dimension=16)  
-                result = simulator.run(circuit, shots=1).result()
-                counts = result.get_counts(circuit)
+            # elif mode=='builder':
+            #     counts = Trotter_circuit_builder(N, k, alpha, gamma, time_delta, theta, phi, lam, J, init_config, shots_count=1)
+            # elif mode=='qiskit':
+            #     circuit = Trotter_circuit_qiskit(N, k, alpha, gamma, time_delta, theta, phi, lam, J.reshape((N,N)), init_config)
+            #     circuit.measure_all()
+            #     simulator = AerSimulator()
+            #     #simulator = AerSimulator(method="matrix_product_state")
+            #     #simulator.set_options(matrix_product_state_max_bond_dimension=16)  
+            #     result = simulator.run(circuit, shots=1).result()
+            #     counts = result.get_counts(circuit)
 
             for key, value in counts.items():
                 if value == 1: 
