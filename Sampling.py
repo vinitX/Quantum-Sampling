@@ -52,12 +52,12 @@ def prob_RBM_nv(s,params,beta=1):
     return np.prod(np.abs(np.cosh(f_nv(s)))**2) * np.exp(-2*beta*(np.dot(s,np.real(a))))
 
 
-def prob_Ising(s,N,params):
-    y_pred = params[0] * np.ones(len(s))
-    y_pred +=  s @ params[1:1+N]
-    y_pred += np.reshape(np.einsum('ki,kj->kij',s,s,optimize='optimal'),(-1,N*N)) @ params[1+N:]
+def prob_Ising(s, N, poly, log_rho_max=1):
+    y_pred = poly[0] * np.ones(len(s))
+    y_pred +=  s @ poly[1:1+N]
+    y_pred += np.reshape(np.einsum('ki,kj->kij',s,s,optimize='optimal'),(-1,N*N)) @ poly[1+N:]
 
-    return y_pred
+    return np.exp(y_pred - log_rho_max)
 
 
 def prob_Ising_nv(s, N, poly, log_rho_max=1):
@@ -68,7 +68,7 @@ def prob_Ising_nv(s, N, poly, log_rho_max=1):
     return np.exp(y_pred - log_rho_max)
 
 
-def sampler(s,prob_func,algo='Metropolis_uniform'):
+def sampler(s, prob_func, algo='Metropolis_uniform'):
     N=len(s)
     if algo=='Metropolis_uniform':
         p1 = prob_func(s)
@@ -83,14 +83,14 @@ def sampler(s,prob_func,algo='Metropolis_uniform'):
         else: return s
 
 
-def Sampling(N,sample_size=1000,burn=None,algo='Metropolis_uniform'):
+def Sampling(N,prob_func,sample_size=1000,burn=None,algo='Metropolis_uniform'):
     if algo=='Exact' and 2**N < sample_size:
       s = enum(N)
-      prob_dist = prob_RBM(s)
+      prob_dist = prob_func(s)
       prob_dist = prob_dist / np.sum(prob_dist)
-      samples = np.random.choice(np.arange(2**N), size=sample_size, p=prob_dist)
-      prob_mat, _ = np.histogram(samples, bins=np.arange(2**N+1))
-      return prob_mat/sample_size
+      #samples = np.random.choice(np.arange(2**N), size=sample_size, p=prob_dist)
+      #prob_mat, _ = np.histogram(samples, bins=np.arange(2**N+1))
+      return prob_mat #/sample_size
 
     s=np.random.choice([1,-1],size=N)
 
@@ -99,7 +99,7 @@ def Sampling(N,sample_size=1000,burn=None,algo='Metropolis_uniform'):
 
     #tm=time.time()
     for k in range(burn):
-      s = sampler(s,algo='Metropolis_uniform')
+      s = sampler(s, prob_func, algo='Metropolis_uniform')
     #print("\n#Burn Complete \n\n")
     #print("\t\t\t\t\t\t Burn Time: ", time.time()-tm)
 
@@ -108,7 +108,7 @@ def Sampling(N,sample_size=1000,burn=None,algo='Metropolis_uniform'):
       prob_mat = np.zeros(2**N)
 
       for k in range(sample_size):
-        s = sampler(s,'Metropolis_uniform')
+        s = sampler(s,prob_func, algo='Metropolis_uniform')
         prob_mat[spin_to_key_nv(s)]+=1
       prob_mat = prob_mat / np.sum(prob_mat)
       return prob_mat
@@ -117,14 +117,13 @@ def Sampling(N,sample_size=1000,burn=None,algo='Metropolis_uniform'):
       prob_dict = {}
 
       for k in range(sample_size):
-        s = sampler(s,'Metropolis_uniform')
+        s = sampler(s,prob_func, algo='Metropolis_uniform')
         key = spin_to_key_nv(s)
         if key in prob_dict: prob_dict[key]+=1
         else: prob_dict[key]=1
       
       for key in prob_dict.keys():
         prob_dict[key] = prob_dict[key] / sample_size
-
 
       return prob_dict
     #print("\t\t\t\t\t\t Metropolis Sampling: ", time.time()-tm)
