@@ -138,11 +138,11 @@ class RBM:
     
 
     def local_op(self,O,s):
-        s_, c = self.apply_pauli(O,s)
         s2, val = get_conn(O,s)
+        loc_op = np.zeros(len(val), dtype=complex)
 
-        for i in range(len(s2)):
-            loc_op += c * self.wavefunction(s2[i]) / self.wavefunction(s)
+        for i in range(s2.shape[1]):
+            loc_op += val[:,i] * self.wavefunction(s2[:,i]) / self.wavefunction(s)
         return loc_op
 
     def Op_sampling(self,O,prob_mat=[],samples=[], method='sampling'):
@@ -263,11 +263,16 @@ class RBM:
 
 
     def local_gradient(self,O,s,idx):
-        s2, val = self.apply_pauli(O,s)
-        ratio = (self.wavefunction(s2) / self.wavefunction(s))  
-        grad_op = self.derivative_operator(s2,s,idx)  
+        s2, val = get_conn(O,s)
+        loc_grad = np.zeros(len(val), dtype=complex)
 
-        return val * grad_op * ratio
+        for i in range(s2.shape[1]):
+            ratio = (self.wavefunction(s2[:,i]) / self.wavefunction(s))  
+            grad_op = self.derivative_operator(s2[:,i],s,idx)  
+
+            loc_grad += val[:,i] * grad_op * ratio
+
+        return loc_grad
 
 
     def grad_Sampling(self,O,O_val=None,prob_mat=[],samples=[],method='sampling'):
