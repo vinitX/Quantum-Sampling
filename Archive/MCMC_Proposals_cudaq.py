@@ -155,11 +155,38 @@ class All_proposals:
 
         # Getting matrix out of circuit feature is not yet available on CudaQ
 
-        '''if mode == "Trotter error/no Sampling error":
-            circuit = self.Trotter_circuit(Trotter_repeat_length=int(time/time_delta_step), alpha=alpha,
+        if mode == "Trotter error/no Sampling error":
+            N = self.no_spins
+            alpha = self.computing_norm_ratio()
+            #time_array, time_delta_step = self.scalar_time_sampling(sampling_type="discrete")
+            time_delta = 0.5
+            #gamma_array, gamma_step = self.scalar_gamma_sampling(sampling_type="discrete")
+            gamma = 0.42
+            tot_time = 12
+
+            k=int(tot_time/time_delta)
+
+            l = self.model_instance_one_body
+            J = np.reshape(self.model_instance_two_body, -1)
+
+            angle_list = []
+            for qubit in range(N):
+                coeff = -alpha*(1-gamma)*l[N-1-qubit]
+                one_body_Ham = gamma * spin.x(0) + coeff * spin.z(0)
+                angle_list.append(list(Euler_angle_decomposition(scipy.linalg.expm(-1.0j*time_delta*one_body_Ham.to_matrix()))))   # always 2*2 so no problem of exponentiation, storage
+
+            theta = np.zeros(N)
+            phi = np.zeros(N)
+            lam = np.zeros(N)
+            for qubit in range(N):
+                theta[qubit], phi[qubit], lam[qubit] = angle_list[qubit]
+
+            circuit = Trotter_circuit(Trotter_repeat_length=int(time/time_delta_step), alpha=alpha,
                                            gamma=gamma,time_delta=time_delta_step,initial_config=None)
             import qiskit.quantum_info as qi
-            U_t = qi.Operator(circuit) '''
+            U_t = qi.Operator(circuit) 
+        
+        U_t = get_operator()
 
         Proposal_mat =  np.multiply(np.conjugate(U_t), U_t)
 
@@ -217,7 +244,7 @@ class All_proposals:
         return Transition_mat
 
     ''' We don't need to store transition matrix to generate trajectories. But it proves to be more efficient when working on a classical simulator as it stores all the possible transitions at once, instead of running quantum circuit multiple times.'''
-    def generate_MCMC_trajectories(self, init_config:np.ndarray, mode='', transition_matrix=[]):
+    def generate_MCMC_trajectories(self, init_config:np.ndarray, mode='kernel', transition_matrix=[]):
         if len(transition_matrix) == 0: 
             N = self.no_spins
             alpha = self.computing_norm_ratio()
@@ -243,8 +270,6 @@ class All_proposals:
             lam = np.zeros(N)
             for qubit in range(N):
                 theta[qubit], phi[qubit], lam[qubit] = angle_list[qubit]
-
-            angles_u3 = np.concatenate(theta,phi,lam)
 
             if mode=='kernel':
                 counts = cudaq.sample(Trotter_circuit, N, k, alpha, gamma, time_delta, theta, phi, lam, J, init_config, shots_count=1)
