@@ -109,9 +109,7 @@ class RBM_surrogate():
     return np.real(np.sum(np.log(np.cosh(self.f(s))*np.cosh((self.f(s)).conj())), axis=1)) -2*self.beta*(s@np.real(a))  #-2*beta*(s.T@np.real(c)@s) + np.sum(np.log(np.cosh(self.g(s))))
 
   def log_rho_diag_pred_nv(self,s,params):
-    a,b,w,u,d,c = self.get_params()
     N=self.N
-    beta=self.beta
 
     y_pred = params[0]
     y_pred +=  np.dot(s,params[1:1+N])
@@ -120,9 +118,7 @@ class RBM_surrogate():
     return y_pred
 
   def log_rho_diag_pred(self,s,params):
-    a,b,w,u,d,c = self.get_params()
     N=self.N
-    beta=self.beta
 
     y_pred = params[0] * np.ones(len(s))
     y_pred +=  s @ params[1:1+N]

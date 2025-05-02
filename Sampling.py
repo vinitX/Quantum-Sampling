@@ -70,13 +70,12 @@ def prob_Ising_nv(s, N, poly, log_rho_max=1):
 def sampler(s, prob_func, algo='Metropolis_uniform'):
     N=len(s)
     if algo=='Metropolis_uniform':
-        p1 = prob_func(s)
-
         s_new = np.random.choice([1,-1],size=N)
+
+        p1 = prob_func(s)
         p2 = prob_func(s_new)
 
         accept = min(1.0,p2/p1)
-
         if np.random.rand()<accept:
             return s_new
         else: return s
@@ -97,7 +96,7 @@ def Sampling(N,prob_func,sample_size=1000,burn=None,algo='Metropolis_uniform'):
       burn = sample_size//10
 
     #tm=time.time()
-    for k in range(burn):
+    for _ in range(burn):
       s = sampler(s, prob_func, algo='Metropolis_uniform')
     #print("\n#Burn Complete \n\n")
     #print("\t\t\t\t\t\t Burn Time: ", time.time()-tm)
@@ -106,7 +105,7 @@ def Sampling(N,prob_func,sample_size=1000,burn=None,algo='Metropolis_uniform'):
     if 2**N < sample_size:
       prob_mat = np.zeros(2**N)
 
-      for k in range(sample_size):
+      for _ in range(sample_size):
         s = sampler(s,prob_func, algo='Metropolis_uniform')
         prob_mat[spin_to_key_nv(s)]+=1
       prob_mat = prob_mat / np.sum(prob_mat)
@@ -115,7 +114,7 @@ def Sampling(N,prob_func,sample_size=1000,burn=None,algo='Metropolis_uniform'):
     else: 
       prob_dict = {}
 
-      for k in range(sample_size):
+      for _ in range(sample_size):
         s = sampler(s,prob_func, algo='Metropolis_uniform')
         key = spin_to_key_nv(s)
         if key in prob_dict: prob_dict[key]+=1
