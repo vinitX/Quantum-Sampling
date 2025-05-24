@@ -90,22 +90,24 @@ def enum(N):
     return key_to_spin(np.arange(2**N), N)
 
 def Energy_Ising(s, N, poly):
-    E = poly[0] * np.ones(len(s))
+    E = 0  #poly[0] 
     E +=  s @ poly[1:1+N]
-    E += np.reshape(np.einsum('ki,kj->kij',s,s,optimize='optimal'),(-1,N*N)) @ poly[1+N:]
+
+    J = poly[1+N:].reshape(N, N) 
+    ssT = np.einsum('ki,kj->kij', s, s, optimize='optimal')
+    upper_J = np.triu(J, k=1) 
+    E += np.tensordot(ssT, upper_J, axes=([1, 2], [0, 1]))
+
     return E
 
-def prob_Ising(s, N, poly, log_rho_max=1):
+def prob_Ising(s, N, poly, log_rho_max=0):
     E = Energy_Ising(s, N, poly)
     return np.exp(E - log_rho_max)
 
 
-def prob_Ising_nv(s, N, poly, log_rho_max=1):
-    y_pred = poly[0]
-    y_pred +=  np.dot(s,poly[1:1+N])
-    y_pred += np.dot(np.reshape(np.outer(s,s),-1), poly[1+N:])
-
-    return np.exp(y_pred - log_rho_max)
+def prob_Ising_nv(s, N, poly, log_rho_max=0):
+    s = s.reshape(1, len(s))
+    return prob_Ising(s, N, poly, log_rho_max)
     
 
 def computing_norm_ratio(N,model_instance_one_body,model_instance_two_body):  #This gives value of alpha = self.computing_norm_ratio()
@@ -132,7 +134,7 @@ def compute_angles(poly, N, time_delta, gamma):
         U = scipy.linalg.expm(-1.0j*time_delta*one_body_Ham.to_matrix())
         theta[qubit], phi[qubit], lam[qubit] = Euler_angle_decomposition(U)  
         
-        euler_error = 1 - np.abs(np.trace(u3_matrix(theta[qubit], phi[qubit], lam[qubit]) @ U.conj()))/2
+        euler_error = 1 - np.abs(np.trace(u3_matrix(theta[qubit], phi[qubit], lam[qubit]) @ U.conj().T))/2
         if euler_error > 1e-8: 
           print("Euler Error: ", euler_error)
     angles_u3 = np.concatenate((theta,phi,lam))
@@ -214,18 +216,18 @@ def get_transition_matrix_from_proposal(N, Proposal_mat, Energy, acceptance_crit
     
     E_rowstack = np.tile(Energy, (2**N,1))  # E_rowstack[i,j] = E_j for all i
     E_diff = E_rowstack.T - E_rowstack # E_diff[i,j] = E_i - E_j (new E minus old E)
-
-    uphill_moves = (E_diff >= 0) # includes isoenergetic moves
-    #downhill_moves = np.invert(uphill_moves)
-
+    
+    downhill_moves = (E_diff <= 0) 
+    
     if acceptance_criteria =='metropolis':
         if beta > 0:
-            A_s_sp = np.exp(-E_diff*beta, where=uphill_moves, out=np.ones_like(E_diff)) #only compute exp for uphill moves, downhill ones are filled with 1 anyway
+            A_s_sp = np.exp(E_diff*beta, where=downhill_moves, out=np.ones_like(E_diff)) #only compute exp for uphill moves, downhill ones are filled with 1 anyway
         if beta == math.inf:
-        # reject all uphill, accept all others (level and downhill)
-            A_s_sp = np.where(uphill_moves, 0.0, 1.)
+        # reject all downhill, accept all others 
+            A_s_sp = np.where(downhill_moves, 0.0, 1.)
 
     Transition_mat = np.multiply(A_s_sp, Proposal_mat)  #note not np.dot but elem wise multiplication
+
     np.fill_diagonal(Transition_mat, 0)
     diag = np.ones(2**N) - np.sum(Transition_mat, axis=0) # This step just fills the diag elems with 1-row_sum. This ensures that row_sum=1 for Transition mat
     Transition_mat = Transition_mat + np.diag(diag)
@@ -237,9 +239,9 @@ def dict_to_res(counts):
     if value == 1: 
         final_config = key
 
-  res = [1.0 if s == '1' else -1.0 for s in final_config]
+  res = [1.0 if s == '0' else -1.0 for s in final_config]
   
-  return np.array(res)
+  return np.flip(res)
 
 
 def quantum_sampler(N,poly,s,k,angles_u3,angles_2q):
@@ -251,8 +253,7 @@ def quantum_sampler(N,poly,s,k,angles_u3,angles_2q):
     p2 = prob_Ising_nv(s_new, N, poly)
 
     accept = min(1.0,p2/p1)
-    if np.random.rand()<accept:
-          return s_new
+    if np.random.rand()<accept: return s_new     
     else: return s
 
 
@@ -304,10 +305,11 @@ def Sampling_Quantum(N, poly, sample_size, tot_time=12, time_delta=0.5, gamma=0.
           s = key_to_spin_nv(key, N)
           angles_ry = np.flip(np.pi*(1-s)/2)
 
-          U_t[:, key] = np.array(cudaq.get_state(
-                        Trotter_circuit, N, k, angles_ry, angles_u3, np.reshape(angles_2q,-1)), copy=False)
+          U_t[:, key] = (np.array(cudaq.get_state(
+                        Trotter_circuit, N, k, angles_ry, angles_u3, np.reshape(angles_2q,-1)), copy=False))
 
-    Proposal_mat =  np.real(np.conjugate(U_t) * U_t)
+    Proposal_mat =  np.abs(U_t)**2  
+    #Proposal_mat = np.ones((2**N,2**N))/(2**N)
 
     s = enum(N)
     Energy = Energy_Ising(s, N, poly)

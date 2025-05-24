@@ -29,7 +29,7 @@ def spin_to_key(s,N):
     return key
 
 def enum(N):
-    return key_to_spin(np.arange(2**N))
+    return key_to_spin(np.arange(2**N),N)
 
 def prob_RBM(s,params,beta=1):
     a,b,w = params
@@ -51,20 +51,25 @@ def prob_RBM_nv(s,params,beta=1):
     return np.prod(np.abs(np.cosh(f_nv(s)))**2) * np.exp(-2*beta*(np.dot(s,np.real(a))))
 
 
-def prob_Ising(s, N, poly, log_rho_max=1):
-    y_pred = poly[0] * np.ones(len(s))
-    y_pred +=  s @ poly[1:1+N]
-    y_pred += np.reshape(np.einsum('ki,kj->kij',s,s,optimize='optimal'),(-1,N*N)) @ poly[1+N:]
+def Energy_Ising(s, N, poly):
+    E = 0  #poly[0] 
+    E +=  s @ poly[1:1+N]
 
-    return np.exp(y_pred - log_rho_max)
+    J = poly[1+N:].reshape(N, N) 
+    ssT = np.einsum('ki,kj->kij', s, s, optimize='optimal')
+    upper_J = np.triu(J, k=1) 
+    E += np.tensordot(ssT, upper_J, axes=([1, 2], [0, 1]))
+
+    return E
+
+def prob_Ising(s, N, poly, log_rho_max=0):
+    E = Energy_Ising(s, N, poly)
+    return np.exp(E - log_rho_max)
 
 
-def prob_Ising_nv(s, N, poly, log_rho_max=1):
-    y_pred = poly[0]
-    y_pred +=  np.dot(s,poly[1:1+N])
-    y_pred += np.dot(np.reshape(np.outer(s,s),-1), poly[1+N:])
-
-    return np.exp(y_pred - log_rho_max)
+def prob_Ising_nv(s, N, poly, log_rho_max=0):
+    s = s.reshape(1, len(s))
+    return prob_Ising(s, N, poly, log_rho_max)
 
 
 def sampler(s, prob_func, algo='Metropolis_uniform'):
