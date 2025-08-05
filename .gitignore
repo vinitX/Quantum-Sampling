@@ -22,3 +22,7 @@
 
 # npy file
 *.npy
+
+
+# png file
+*.png
