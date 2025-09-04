@@ -6,6 +6,7 @@ from RBM_surrogate import *
 from get_conn import get_conn
 #from Sampling import *
 from Sampling_Quantum import *
+from Adam import Adam
 
 # import os
 import numpy as np
@@ -17,11 +18,11 @@ import time
 # import matplotlib.pyplot as plt
 # import json
 
-import tensorflow as tf
+#import tensorflow as tf
 # from functools import partial
 
-N=8
-M=8
+N=4
+M=2
 D=0
 beta=1
 
@@ -90,7 +91,7 @@ def save_data(X,smpl,g,seed,E,E_smpl,prob_dist,sample_list):
 
 
 
-sample_size = 20000
+sample_size = 200
 
 seed = 1
 
@@ -98,14 +99,18 @@ E_hist=[]
 E_smpl_hist=[]
 
 rbm = RBM_surrogate(N=N,M=M,seed=seed,)
-x = tf.Variable(rbm.X)
+#x = tf.Variable(rbm.X)
+x = np.array(rbm.X, dtype=np.float32)
 
-tm=time.time()
+tmg=time.time()
 
-optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate, beta_1=beta1, beta_2=beta2, epsilon=epsilon)
+optimizer = Adam(learning_rate=learning_rate, beta_1=beta1, beta_2=beta2, epsilon=epsilon)
+#optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate, beta_1=beta1, beta_2=beta2, epsilon=epsilon)
+
+
 
 for epoch in range(40):
-  rbm = RBM_surrogate(N,M,X=x.numpy())
+  rbm = RBM_surrogate(N,M,X=x)  #.numpy())
   rbm.build_surrogate()
 
   tm = time.time()
@@ -114,6 +119,8 @@ for epoch in range(40):
   prob_dist = Sampling_Quantum(N=N, poly=rbm.poly, sample_size=sample_size, burn=sample_size//10)
 
   print("Sampling Time: ", time.time()-tm)
+
+  print(rbm.Energy_exact(Ham))
 
   E = rbm.Energy_exact(Ham)
 
@@ -127,11 +134,11 @@ for epoch in range(40):
   grad = np.real(rbm.grad_Sampling(Ham,prob_mat=prob_dist))
   print("Gradient Time: ", time.time()-tm)
 
-  optimizer.apply_gradients([(grad, x)])
+  #optimizer.apply_gradients([(grad, x)])
 
   E_hist.append(E)
   E_smpl_hist.append(E_smpl)
 
-print("\n\n\nEnergy: ",E,"\n Time",time.time()-tm, lmbd[0])
+print("\n\n\nEnergy: ",E,"\n Time",time.time()-tmg, lmbd[0])
 
 #plot_log(E_hist, E_smpl_hist)
