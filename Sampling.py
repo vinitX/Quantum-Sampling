@@ -91,9 +91,10 @@ def Sampling(N,prob_func,sample_size=1000,burn=None,algo='Metropolis_uniform'):
       s = enum(N)
       prob_dist = prob_func(s)
       prob_dist = prob_dist / np.sum(prob_dist)
+      return prob_dist
       #samples = np.random.choice(np.arange(2**N), size=sample_size, p=prob_dist)
       #prob_mat, _ = np.histogram(samples, bins=np.arange(2**N+1))
-      return prob_mat #/sample_size
+      #return prob_mat #/sample_size
 
     s=np.random.choice([1,-1],size=N)
 
@@ -107,26 +108,26 @@ def Sampling(N,prob_func,sample_size=1000,burn=None,algo='Metropolis_uniform'):
     #print("\t\t\t\t\t\t Burn Time: ", time.time()-tm)
 
     #tm=time.time()
-    if 2**N < sample_size:
-      prob_mat = np.zeros(2**N)
+    # if 2**N < sample_size:
+    #   prob_mat = np.zeros(2**N)
 
-      for _ in range(sample_size):
-        s = sampler(s,prob_func, algo='Metropolis_uniform')
-        prob_mat[spin_to_key_nv(s)]+=1
-      prob_mat = prob_mat / np.sum(prob_mat)
-      return prob_mat
+    #   for _ in range(sample_size):
+    #     s = sampler(s,prob_func, algo='Metropolis_uniform')
+    #     prob_mat[spin_to_key_nv(s)]+=1
+    #   prob_mat = prob_mat / np.sum(prob_mat)
+    #   return prob_mat
 
-    else: 
-      prob_dict = {}
+    # else: 
+    prob_dict = {}
 
-      for _ in range(sample_size):
-        s = sampler(s,prob_func, algo='Metropolis_uniform')
-        key = spin_to_key_nv(s)
-        if key in prob_dict: prob_dict[key]+=1
-        else: prob_dict[key]=1
-      
-      for key in prob_dict.keys():
-        prob_dict[key] = prob_dict[key] / sample_size
+    for _ in range(sample_size):
+      s = sampler(s,prob_func, algo='Metropolis_uniform')
+      key = spin_to_key_nv(s)
+      if key in prob_dict: prob_dict[key]+=1
+      else: prob_dict[key]=1
+    
+    for key in prob_dict.keys():
+      prob_dict[key] = prob_dict[key] / sample_size
 
-      return prob_dict
-    #print("\t\t\t\t\t\t Metropolis Sampling: ", time.time()-tm)
+    return prob_dict
+  #print("\t\t\t\t\t\t Metropolis Sampling: ", time.time()-tm)

@@ -2,24 +2,16 @@ import cudaq
 from cudaq import spin
 
 from RBM_surrogate import *
-#from New_MCMC_Proposal import *
 from get_conn import get_conn
-#from Sampling import *
+from Sampling import *
 from Sampling_Quantum import *
+#from Sampling_MPO import *
 from Adam import Adam
 
-# import os
 import numpy as np
-#import netket as nk
-# import scipy as sp
-# import numpy.linalg as la
-# import scipy.linalg as spla
 import time
 # import matplotlib.pyplot as plt
-# import json
-
-#import tensorflow as tf
-# from functools import partial
+from functools import partial
 
 N=2
 M=1
@@ -89,8 +81,6 @@ def save_data(X,smpl,g,seed,E,E_smpl,prob_dist,sample_list):
 
 
 
-
-
 sample_size = 100
 
 seed = 1
@@ -107,16 +97,22 @@ tmg=time.time()
 optimizer = Adam(learning_rate=learning_rate, beta_1=beta1, beta_2=beta2, epsilon=epsilon)
 #optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate, beta_1=beta1, beta_2=beta2, epsilon=epsilon)
 
-
+sampling_method = "Uniform"
 
 for epoch in range(40):
   rbm = RBM_surrogate(N,M,X=x)  #.numpy())
   rbm.build_surrogate()
 
   tm = time.time()
-  #prob_func = partial(prob_Ising_nv, N=N, poly=rbm.poly, log_rho_max=rbm.log_rho_max)
-  #prob_dist = Sampling(N=N, prob_func=prob_func, sample_size=sample_size, burn=sample_size//10)
-  prob_dict, _ = Sampling_Quantum(N=N, poly=rbm.poly, sample_size=sample_size, burn=sample_size//10)
+  
+  if sampling_method == "Uniform":
+    prob_func = partial(prob_Ising_nv, N=N, poly=rbm.poly, log_rho_max=rbm.log_rho_max)
+    prob_dict = Sampling(N=N, prob_func=prob_func, sample_size=sample_size, burn=sample_size//10)
+    
+  elif sampling_method == "Quantum":
+    prob_dict, _ = Sampling_Quantum(N=N, poly=rbm.poly, sample_size=sample_size, burn=sample_size//10)
+  # elif sampling_method == "TN":
+  #   prob_dict, _ = Sampling_MPO(N=N, poly=rbm.poly, sample_size=sample_size, burn=sample_size//10)
 
   print("\t\t\tSampling Time: ", time.time()-tm)
 
@@ -140,4 +136,4 @@ for epoch in range(40):
 
 print("\n\n\nEnergy: ",E,"\n Time",time.time()-tmg, lmbd[0])
 
-plot_log(E_hist, E_smpl_hist)
+# plot_log(E_hist, E_smpl_hist)
