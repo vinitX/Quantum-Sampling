@@ -21,8 +21,8 @@ import time
 #import tensorflow as tf
 # from functools import partial
 
-N=4
-M=2
+N=2
+M=1
 D=0
 beta=1
 
@@ -59,18 +59,18 @@ lmbd, _ = eigsh(Ham_csr, k=1, which='SA')
 print("Smallest eigenvalue:", lmbd)
 
 
-# def plot_log(E_hist, E_smpl_hist):
-#     #ya, iter = smpl.median_filter(np.real(E_hist))
-#     ya = np.real(E_hist)
-#     xa = np.arange(len(ya))
-#     ci = np.abs(np.array(E_smpl_hist) - ya)
-#     fig, ax = plt.subplots()
-#     ax.plot(ya)
-#     ax.fill_between(xa, (ya-ci), (ya+ci), color='r', alpha=.5)
-#     ax.set_ylabel("Energy")
-#     ax.set_xlabel("Epochs")
-#     plt.hlines(lmbd[0],0,len(xa)-1,color='r',linestyles='dashed')
-#     plt.show()
+def plot_log(E_hist, E_smpl_hist):
+    #ya, iter = smpl.median_filter(np.real(E_hist))
+    ya = np.real(E_hist)
+    xa = np.arange(len(ya))
+    ci = np.abs(np.array(E_smpl_hist) - ya)
+    fig, ax = plt.subplots()
+    ax.plot(ya)
+    ax.fill_between(xa, (ya-ci), (ya+ci), color='r', alpha=.5)
+    ax.set_ylabel("Energy")
+    ax.set_xlabel("Epochs")
+    plt.hlines(lmbd[0],0,len(xa)-1,color='r',linestyles='dashed')
+    plt.show()
 
 
 def save_data(X,smpl,g,seed,E,E_smpl,prob_dist,sample_list):
@@ -91,7 +91,7 @@ def save_data(X,smpl,g,seed,E,E_smpl,prob_dist,sample_list):
 
 
 
-sample_size = 200
+sample_size = 100
 
 seed = 1
 
@@ -116,29 +116,28 @@ for epoch in range(40):
   tm = time.time()
   #prob_func = partial(prob_Ising_nv, N=N, poly=rbm.poly, log_rho_max=rbm.log_rho_max)
   #prob_dist = Sampling(N=N, prob_func=prob_func, sample_size=sample_size, burn=sample_size//10)
-  prob_dist = Sampling_Quantum(N=N, poly=rbm.poly, sample_size=sample_size, burn=sample_size//10)
+  prob_dict, _ = Sampling_Quantum(N=N, poly=rbm.poly, sample_size=sample_size, burn=sample_size//10)
 
-  print("Sampling Time: ", time.time()-tm)
-
-  print(rbm.Energy_exact(Ham))
+  print("\t\t\tSampling Time: ", time.time()-tm)
 
   E = rbm.Energy_exact(Ham)
 
-  tm = time.time()
-  E_smpl = rbm.Energy_sampling(Ham,prob_mat=prob_dist)
-  print("Energy: ", time.time()-tm)
-  print(epoch, "Energy Time: ", E, "\t +/- \t", np.abs(E_smpl - E))
+  #tm = time.time()
+  E_smpl = rbm.Energy_sampling(Ham,prob_dict=prob_dict)
+  #print("Energy Time: ", time.time()-tm)
+  print(E, E_smpl)
+  #print(epoch, "Energy: ", E, "\t +/- \t", np.abs(E_smpl - E))
 
-  tm = time.time()
+  #tm = time.time()
   #grad_exact = np.real(rbm.grad_exact(Ham))
-  grad = np.real(rbm.grad_Sampling(Ham,prob_mat=prob_dist))
-  print("Gradient Time: ", time.time()-tm)
+  grad = np.real(rbm.grad_Sampling(Ham,prob_dict=prob_dict))
+  #print("Gradient Time: ", time.time()-tm)
 
-  #optimizer.apply_gradients([(grad, x)])
+  optimizer.apply_gradients([(grad, x)])
 
   E_hist.append(E)
   E_smpl_hist.append(E_smpl)
 
 print("\n\n\nEnergy: ",E,"\n Time",time.time()-tmg, lmbd[0])
 
-#plot_log(E_hist, E_smpl_hist)
+plot_log(E_hist, E_smpl_hist)
