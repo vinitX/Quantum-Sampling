@@ -2,7 +2,7 @@ import quimb as qu
 import quimb.tensor as qtn
 import numpy as np
 import time
-from Sampling_Quantum import *
+from CudaQ.Sampling_Quantum import *
 
 def build_circuit(n_qubits, depth, gate_params):
     """Build a quantum circuit and convert it to an MPO."""
