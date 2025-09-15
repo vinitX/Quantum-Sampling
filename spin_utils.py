@@ -143,16 +143,13 @@ class SpinOperator:
         self.n_qubits = n_qubits
 
     def x(self, i): return PauliTerm(self.n_qubits, {i: 'X'})
-
     def y(self, i): return PauliTerm(self.n_qubits, {i: 'Y'})
-
     def z(self, i): return PauliTerm(self.n_qubits, {i: 'Z'})
-
     def i(self, i): return PauliTerm(self.n_qubits, {i: 'I'})
 
 
 # Example usage
-spin = SpinOperator(n_qubits=4)
+'''spin = SpinOperator(n_qubits=4)
 Op = 2.5 * spin.x(1) * spin.y(0) + 0.1 * spin.i(3) * spin.z(1) + 2.5 * spin.y(0) * spin.x(1)  # duplicates
 
 # Pretty-print
@@ -162,4 +159,59 @@ op_str = str(Op)
 dense_op = Op.to_dense()
 sparse_op = Op.to_sparse()
 
-op_str, dense_op, sparse_op.shape
+op_str, dense_op, sparse_op.shape'''
+
+
+
+def apply_pauli(op, bitstring):
+    print("Applying Pauli:", op)
+    print(len(op))
+    new_bitstring = np.copy(bitstring)
+    phase_factor = np.ones(len(bitstring), dtype=complex)
+
+    for qubit_idx in op.keys():
+        pauli_op = op[qubit_idx]
+        print(pauli_op, qubit_idx)
+
+        if pauli_op == 'I':
+            continue
+        elif pauli_op == 'X':
+            new_bitstring[:,qubit_idx] = - new_bitstring[:,qubit_idx]
+        elif pauli_op == 'Y':
+            new_bitstring[:,qubit_idx] = - new_bitstring[:,qubit_idx]
+            phase_factor *= 1j*bitstring[:,qubit_idx]
+        elif pauli_op == 'Z':
+            phase_factor *= bitstring[:,qubit_idx]
+        else:
+            print("Invalid Pauli Operator!")
+            break
+
+    return new_bitstring, phase_factor
+
+
+def get_conn(hamiltonian: SpinOperator, bitstring: np.ndarray):  
+    spin_list = []
+    val_list = []
+
+    for term in hamiltonian.terms:
+        op = term.ops  # Get Pauli op without coefficient
+        coeff = term.coeff  # Extract the coefficient
+
+        #print(term, op, coeff)
+
+        new_bitstring, phase_factor = apply_pauli(op, bitstring)
+
+        spin_list.append(new_bitstring)
+        val_list.append(phase_factor * coeff)
+    
+    spin_list = np.transpose(spin_list, [1,0,2])
+    val_list = np.transpose(val_list)
+
+    return spin_list, val_list
+
+
+# Example usage
+'''spin = SpinOperator(n_qubits=2)
+Hamiltonian = 2.5 * spin.x(1) * spin.y(0) + 0.1 * spin.z(1) + 2.5 * spin.y(0) * spin.x(1)  
+bitstring = np.array([[-1, -1], [1, 1]])  
+get_conn(Hamiltonian, bitstring)  '''
