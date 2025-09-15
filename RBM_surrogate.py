@@ -1,7 +1,7 @@
 import os
 import numpy as np
 #import netket as nk
-from get_conn import get_conn
+from CudaQ.get_conn import get_conn
 import scipy as sp
 import numpy.linalg as la
 import scipy.linalg as spla

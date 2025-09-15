@@ -1,6 +1,6 @@
 import numpy as np
 import time
-from get_conn import get_conn
+from spin_utils import get_conn
 
 class RBM:
     def __init__(self, N, M, X=[], seed=1, dtype='complex'):

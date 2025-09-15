@@ -2,7 +2,7 @@ import cudaq
 from cudaq import spin
 
 from RBM_surrogate import *
-from get_conn import get_conn
+from CudaQ.get_conn import get_conn
 from Sampling import *
 from CudaQ.Sampling_Quantum import *
 #from Sampling_MPO import *
