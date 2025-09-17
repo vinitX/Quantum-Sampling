@@ -41,8 +41,12 @@ class ProblemInstance:
         Infers n and defines J_quantum and h_quantum.
         Can pre-compute E_arr to avoid repeatedly computing energy of any spin configuration later.
         """
-        if np.any(np.triu(J, k=1) != J):
-            raise ValueError('J must be upper-triangular with 0s along the diagonal')
+        if np.any(np.abs(np.diag(J)) > 1e-12):
+            raise ValueError('J must have 0s along the diagonal')
+        if np.any(J != J.T):
+            raise ValueError('J must be symmetric')
+        # if np.any(np.triu(J, k=1) != J):
+        #     raise ValueError('J must be upper-triangular with 0s along the diagonal')
 
         self.J = J
         self.h = h
