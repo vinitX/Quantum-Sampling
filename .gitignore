@@ -30,3 +30,7 @@
 
 # csv file
 *.csv
+
+
+# ipynb checkpoints
+*.pyc
