@@ -215,3 +215,75 @@ def get_conn(hamiltonian: SpinOperator, bitstring: np.ndarray):
 Hamiltonian = 2.5 * spin.x(1) * spin.y(0) + 0.1 * spin.z(1) + 2.5 * spin.y(0) * spin.x(1)  
 bitstring = np.array([[-1, -1], [1, 1]])  
 get_conn(Hamiltonian, bitstring)  '''
+
+
+
+
+import numpy as np
+# from spin_utils import PauliTerm, PauliSum  # assumes these are available
+
+def hamiltonian_matrix_to_pauli_sum(H, tol=1e-12):
+    """
+    Pauli decomposition via n-fold Pauli transform (tensor contractions).
+
+    Parameters
+    ----------
+    H : (2**n, 2**n) complex ndarray
+    tol : float
+        Coefficients with |c| < tol are dropped; tiny imag parts < tol are zeroed.
+
+    Returns
+    -------
+    PauliSum
+    """
+    H = np.asarray(H, dtype=complex)
+    dim = H.shape[0]
+    if H.shape != (dim, dim):
+        raise ValueError("H must be square.")
+    n = int(round(np.log2(dim)))
+    if 2**n != dim:
+        raise ValueError("H size must be 2**n by 2**n.")
+
+    # 1-qubit Paulis
+    I = np.array([[1, 0], [0, 1]], dtype=complex)
+    X = np.array([[0, 1], [1, 0]], dtype=complex)
+    Y = np.array([[0, -1j], [1j, 0]], dtype=complex)
+    Z = np.array([[1, 0], [0, -1]], dtype=complex)
+
+    # Tensor S[a, r, c] = (sigma_a)[c, r] so that contracting over r,c computes Tr(sigma_a^† · ·)
+    S = np.stack([I, X, Y, Z]).transpose(0, 2, 1)  # shape (4, 2, 2)
+
+    # Reshape H into H[r1..rn, c1..cn]
+    T = H.reshape((2,) * (2 * n))
+
+    # Repeatedly contract each (rk, ck) with S to add a new Pauli index ak
+    # After k steps, T has shape: (4,)*k + (2,)*(n-k) + (2,)*(n-k)
+    for k in range(n):
+        # Contract S over (r_k, c_k) which are axes k and n+k of the current T
+        T = np.tensordot(S, T, axes=([1, 2], [k, n + k]))
+        # Result shape is (4,) + (4,)*k + (2,)*(n-k-1) + (2,)*(n-k-1)
+        # No transpose needed; the new 4-axis is already in front.
+
+    # Now T holds all coefficients c_{a1...an} but missing the 1/2^n factor.
+    coeffs = T / (2 ** n)  # shape (4,)*n
+
+    labels = np.array(['I', 'X', 'Y', 'Z'])
+    terms = []
+    # Iterate over multi-index in (4,)*n, skipping identities when possible
+    it = np.ndindex(*(4,) * n)
+    for idx in it:
+        c = coeffs[idx]
+        # Clean numerical fuzz
+        if abs(c.real) < tol: c = 1j * c.imag
+        if abs(c.imag) < tol: c = c.real
+        if abs(c) < tol:
+            continue
+
+        ops_dict = {q: labels[a] for q, a in enumerate(idx) if a != 0}  # 0 -> 'I'
+        if not ops_dict:
+            # This is the all-identity term; keep it as empty ops_dict with coeff c
+            terms.append(PauliTerm(n_qubits=n, ops_dict={}, coeff=c))
+        else:
+            terms.append(PauliTerm(n_qubits=n, ops_dict=ops_dict, coeff=c))
+
+    return PauliSum(n_qubits=n, terms=terms)
