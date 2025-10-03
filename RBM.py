@@ -137,31 +137,35 @@ class RBM:
         return np.array(samples) #prob_mat
     
 
-    def local_op(self,O,s):
+    def local_energy(self,O,s):
         s2, val = get_conn(O,s)
         loc_op = np.zeros(len(val), dtype=complex)
 
         for i in range(s2.shape[1]):
             loc_op += val[:,i] * self.wavefunction(s2[:,i]) / self.wavefunction(s)
         return loc_op
-
-    def Op_sampling(self,O,prob_mat=[],samples=[], method='sampling'):
-        if method == 'exact' or len(prob_mat)!=0:
-            s = self.enum(self.N)
-            if method == 'exact': 
-                rho_diag = self.prob(s) 
-            else: 
-                rho_diag = prob_mat
-
-            E = np.sum(rho_diag * self.local_op(O,s)) / np.sum(rho_diag)
-        
-        elif len(samples)!=0:
-            s=samples
-            prob_mat = self.prob(s)
-
-            E = np.sum(self.local_op(O,s)) / len(samples)
-
+    
+    def Energy_exact(self,H):
+        s = self.enum(self.N)
+        rho_diag = self.prob(s) 
+        E = np.sum(rho_diag * self.local_energy(H,s)) / np.sum(rho_diag)
         return np.real(E)
+
+    def Energy_sampling(self,H,prob_dict={},prob_mat=[]):
+        if len(prob_dict) > 0:
+            keys = np.array(list(prob_dict.keys()))
+            s = self.key_to_spin(keys)
+            prob_mat = np.array(list(prob_dict.values()))
+        elif len(prob_mat) > 0:
+            s = self.enum(self.N)
+        else: 
+            print("Provide either a dictionary or a vector of probabilities")
+            return 0
+  
+        local_energies = self.local_energy(H,s)
+
+        E = np.real(np.sum(local_energies*prob_mat)/np.sum(prob_mat))
+        return E
 
 
     def swap_operator(self, u, v, partition):
@@ -274,35 +278,63 @@ class RBM:
 
         return loc_grad
 
-
-    def grad_Sampling(self,O,O_val=None,prob_mat=[],samples=[],method='sampling'):
+    def grad_exact(self,O,O_val=None,prob_mat=[]):
         #Works only for pauli-string operators
         N=self.N
-
         grad = np.zeros(len(self.X),dtype=complex)
 
-        if method == 'exact' or len(prob_mat)!=0:
-            s = self.enum(N)
-            if method == 'exact': 
-                rho_diag = self.prob(s) 
-            else: 
-                rho_diag = prob_mat
+        s = self.enum(N)
 
-            for idx in range(len(self.X)):
-                derivative_op_diag = np.sum(rho_diag * self.derivative_operator(s,s,idx))
-                local_grads = np.sum(rho_diag * self.local_gradient(O,s,idx))
+        if len(prob_mat)!=0: 
+            rho_diag = prob_mat
+        else: 
+            rho_diag = self.prob(s) 
 
-                grad[idx] = (local_grads - O_val * derivative_op_diag)/np.sum(rho_diag)
 
-        elif len(prob_mat) == 0:
-            s = samples
+        for idx in range(len(self.X)):
+            derivative_op_diag = np.sum(rho_diag * self.derivative_operator(s,s,idx))
+            local_grads = np.sum(rho_diag * self.local_gradient(O,s,idx))
 
-            for idx in range(len(self.X)):
-                derivative_op_diag = np.sum(self.derivative_operator(s,s,idx))
-                local_grads = np.sum(self.local_gradient(O,s,idx))
-                grad[idx] = (local_grads - O_val * derivative_op_diag)/len(s)
+            grad[idx] = (local_grads - O_val * derivative_op_diag)/np.sum(rho_diag)
 
         return np.real(grad)
+    
+
+    def grad_Sampling(self,H,prob_dict={},prob_mat=[],Energy=None):
+        if len(prob_dict) > 0:
+            keys = np.array(list(prob_dict.keys()))
+            s = self.key_to_spin(keys)
+            prob_mat = np.array(list(prob_dict.values()))
+        elif len(prob_mat) > 0:
+            s = self.enum(self.N)
+        else: 
+            print("Provide either a dictionary or a vector of probabilities")
+            return 0
+
+        N=self.N
+
+        derivative_op_diag = np.zeros(len(self.X),dtype=complex)
+        local_grads = np.zeros(len(self.X),dtype=complex)
+        grad = np.zeros(len(self.X),dtype=complex)
+
+        local_energies = self.local_energy(H,s)
+
+        rho_diag = prob_mat
+        Energy = np.real(np.sum(local_energies*rho_diag)/np.sum(rho_diag))
+
+        s_vec = np.reshape(s, (len(s),1,N))
+
+        for idx in range(len(self.X)):
+            if self.vv == False:
+                var, _, _ = self.map_idx_to_var(idx)
+                if var == 'rc' or var == 'ic': continue
+
+        derivative_op_diag[idx] = np.sum(rho_diag * self.derivative_operator(s,s_vec,idx)[:,0])
+        local_grads[idx] = np.sum(rho_diag * self.local_gradient(H,s,idx))
+
+        grad = (local_grads - Energy * derivative_op_diag)/np.sum(rho_diag)
+
+        return grad
 
 
     def grad_renyi_entropy_sampling(self, SWAP_val, u, v, partition):
