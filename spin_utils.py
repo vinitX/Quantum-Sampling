@@ -259,8 +259,8 @@ def hamiltonian_matrix_to_pauli_sum(H, tol=1e-12):
     # Repeatedly contract each (rk, ck) with S to add a new Pauli index ak
     # After k steps, T has shape: (4,)*k + (2,)*(n-k) + (2,)*(n-k)
     for k in range(n):
-        # Contract S over (r_k, c_k) which are axes k and n+k of the current T
-        T = np.tensordot(S, T, axes=([1, 2], [k, n + k]))
+        # Contract S over (r_k, c_k) which are axes k and n of the current T
+        T = np.tensordot(S, T, axes=([1, 2], [k, n]))
         # Result shape is (4,) + (4,)*k + (2,)*(n-k-1) + (2,)*(n-k-1)
         # No transpose needed; the new 4-axis is already in front.
 
@@ -274,12 +274,14 @@ def hamiltonian_matrix_to_pauli_sum(H, tol=1e-12):
     for idx in it:
         c = coeffs[idx]
         # Clean numerical fuzz
-        if abs(c.real) < tol: c = 1j * c.imag
-        if abs(c.imag) < tol: c = c.real
-        if abs(c) < tol:
+        if abs(c.real) < tol: c = 1j * c.imag  # Purely imaginary
+        if abs(c.imag) < tol: c = c.real  # Purely real
+        if abs(c) < tol:  
             continue
 
-        ops_dict = {q: labels[a] for q, a in enumerate(idx) if a != 0}  # 0 -> 'I'
+        #ops_dict = {q: labels[a] for q, a in enumerate(idx) if a != 0}  # 0 -> 'I'
+        ops_dict = {q: labels[idx[n-1 - q]] for q in range(n) if idx[n-1 - q] != 0}
+
         if not ops_dict:
             # This is the all-identity term; keep it as empty ops_dict with coeff c
             terms.append(PauliTerm(n_qubits=n, ops_dict={}, coeff=c))
