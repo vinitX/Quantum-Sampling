@@ -164,14 +164,14 @@ op_str, dense_op, sparse_op.shape'''
 
 
 def apply_pauli(op, bitstring):
-    print("Applying Pauli:", op)
-    print(len(op))
+    # print("Applying Pauli:", op)
+    # print(len(op))
     new_bitstring = np.copy(bitstring)
     phase_factor = np.ones(len(bitstring), dtype=complex)
 
     for qubit_idx in op.keys():
         pauli_op = op[qubit_idx]
-        print(pauli_op, qubit_idx)
+        # print(pauli_op, qubit_idx)
 
         if pauli_op == 'I':
             continue
