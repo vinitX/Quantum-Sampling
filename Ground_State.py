@@ -16,8 +16,14 @@ from scipy.sparse.linalg import eigsh
 
 import argparse
 
-def load_hamiltonian(N, ham_file): 
-  ham = np.zeros((2**N,2**N),dtype=complex)
+def load_hamiltonian(N, ham_file, kappa): 
+  # Dilating Hamiltonian to have size (2^N, 2^N)
+  # H_dil = H_org \osum kappa * I
+  # kappa is the eigenvalue of the fill padded subspace. 
+  # It needs to be larger than the eigenvalue of the ground state, 
+  # if we want the learner to converge to the true ground state. 
+
+  ham = kappa * np.eye(2**N,dtype=complex)
 
   with open(ham_file, 'r') as f:
       for line in f:
@@ -96,6 +102,7 @@ def main():
     parser.add_argument('--beta', type=float, default=1.0, help='Inverse temperature')
     parser.add_argument('--seed', type=int, default=1, help='Random seed for initialization')
     parser.add_argument('--sample_size', type=int, default=10000, help='Sample size for Monte Carlo sampling')    
+    parser.add_argument('--kappa', type=float, default=0, help='The eigenvalue to the fill padded space.')
 
     args = parser.parse_args()
     print(args)
@@ -109,9 +116,10 @@ def main():
     sample_size = args.sample_size
     ham_file = args.ham_file
     data_dir = args.data_dir
+    kappa = args.kappa
 
 
-    ham_pauli, lmbd = load_hamiltonian(N, ham_file)
+    ham_pauli, lmbd = load_hamiltonian(N, ham_file, kappa)
 
     E_hist=[]
     E_smpl_hist=[]
