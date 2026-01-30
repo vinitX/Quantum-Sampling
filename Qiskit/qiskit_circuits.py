@@ -34,17 +34,14 @@ def two_qubit_gate_qiskit(circuit, angle:float, qubit_1:int, qubit_2:int, mode="
         circuit.h(qubit_2)
     return circuit
 
-def initialize_from_bitstring(qc, N, angles_ry):
-    for i in range(N):
-        qc.ry(angles_ry[i], i)
-
 def Trotter_circuit_qiskit(N, k, angles_ry, angles_u3, angles_2q):
     # This is the actual Trotter circuit. Here the circuit construction for Trotterized version of time evolution happens
 
     #qreg = QuantumRegister(N)
     #creg = ClassicalRegister(N)
     circuit = QuantumCircuit(N) #, creg)
-    initialize_from_bitstring(circuit, N, angles_ry)
+    for i in range(N):
+        circuit.ry(angles_ry[i], i)
 
     for _ in range(k-1):
         for i in np.arange(N):
