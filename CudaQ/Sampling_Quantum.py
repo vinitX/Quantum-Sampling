@@ -290,7 +290,7 @@ def Sampling_Quantum(N, poly, sample_size, tot_time=12, time_delta=0.5, gamma=0.
 
     prob_dict = dict(sorted(prob_dict.items()))
 
-    return prob_dict, key_list     
+    return prob_dict     
      
 
   elif compute_proposal_matrix == True: 
