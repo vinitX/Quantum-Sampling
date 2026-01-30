@@ -1,4 +1,5 @@
 import argparse
+import time
 import numpy as np
 from qiskit import QuantumCircuit, ClassicalRegister
 from qiskit.compiler import transpile
@@ -79,13 +80,13 @@ def run_sequential_qasm(N, k, angles_ry, angles_u3, angles_2q, runs=10, shots=1,
         circuit.measure(range(N), range(N))
 
         transpiled = transpile(circuit, simulator, seed_transpiler=seed)
-        job = simulator.run(transpiled, shots=shots, seed_simulator=seed)
+        job = simulator.run(transpiled, device="GPU", precision="single", shots=shots, seed_simulator=seed)
         counts = job.result().get_counts()
-        print("Counts:", counts)
+        # print("Counts:", counts)
 
         # Use the most frequent outcome (shots=1 yields the single observed bitstring).
         prev_bitstring = max(counts, key=counts.get)
-        print("Selected bitstring:", prev_bitstring)
+        # print("Selected bitstring:", prev_bitstring)
         results.append(prev_bitstring)
 
     return results
@@ -100,21 +101,25 @@ def main():
     args = parser.parse_args()
 
     N = args.num_qubits
-    k = args.trotter_steps
-    angles_ry = np.zeros(N)
-    angles_u3 = np.zeros(N * 3)
-    angles_2q = np.zeros((N, N))
+    k = 4#args.trotter_steps
+    angles_ry = np.random.choice([0, np.pi], N)
+    angles_u3 = np.random.uniform(0, 2*np.pi, N*3)
+    angles_2q = np.random.uniform(0, 2*np.pi, (N, N))
+    
 
+    t0 = time.time()
     results = run_sequential_qasm(
         N,
         k,
         angles_ry,
         angles_u3,
         angles_2q,
-        runs=args.runs,
-        shots=args.shots,
+        runs=100,
+        shots=1000,
         seed=args.seed,
     )
+    t1 = time.time()
+    print(f"Total simulation time for 100 runs: {t1 - t0} seconds")
     print("Sequential measurement bitstrings:", results)
 
 if __name__ == "__main__":
