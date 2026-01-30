@@ -1,8 +1,8 @@
+import argparse
 import numpy as np
-from qiskit import QuantumCircuit, ClassicalRegister, QuantumRegister
-import scipy
-from qiskit.quantum_info import SparsePauliOp
-import itertools
+from qiskit import QuantumCircuit, ClassicalRegister
+from qiskit.compiler import transpile
+from qiskit_aer import AerSimulator
 
 '''def Euler_angle_decomposition_qiskit(unitary:np.ndarray):
     #Given a 2*2 unitary matrix as np.array, this function computes the Euler angles (theta, phi, lambda) required
@@ -36,9 +36,6 @@ def two_qubit_gate_qiskit(circuit, angle:float, qubit_1:int, qubit_2:int, mode="
 
 def Trotter_circuit_qiskit(N, k, angles_ry, angles_u3, angles_2q):
     # This is the actual Trotter circuit. Here the circuit construction for Trotterized version of time evolution happens
-
-    #qreg = QuantumRegister(N)
-    #creg = ClassicalRegister(N)
     circuit = QuantumCircuit(N) #, creg)
     for i in range(N):
         circuit.ry(angles_ry[i], i)
@@ -57,3 +54,68 @@ def Trotter_circuit_qiskit(N, k, angles_ry, angles_u3, angles_2q):
         circuit.u(angles_u3[i*3], angles_u3[i*3+1], angles_u3[i*3+2], i)
         
     return circuit
+
+def _apply_bitstring_initialization(circuit, bitstring):
+    # Qiskit bitstrings are reported with the highest-index classical bit on the left.
+    # We reverse to map left-to-right into qubit indices [0..N-1].
+    bits = list(reversed(bitstring.strip()))
+    for q, b in enumerate(bits):
+        if b == "1":
+            circuit.x(q)
+    return circuit
+
+def run_sequential_qasm(N, k, angles_ry, angles_u3, angles_2q, runs=10, shots=1, seed=None):
+    simulator = AerSimulator()
+    results = []
+    prev_bitstring = None
+
+    for _ in range(runs):
+        circuit = Trotter_circuit_qiskit(N, k, angles_ry, angles_u3, angles_2q)
+        if prev_bitstring is not None:
+            _apply_bitstring_initialization(circuit, prev_bitstring)
+
+        creg = ClassicalRegister(N)
+        circuit.add_register(creg)
+        circuit.measure(range(N), range(N))
+
+        transpiled = transpile(circuit, simulator, seed_transpiler=seed)
+        job = simulator.run(transpiled, shots=shots, seed_simulator=seed)
+        counts = job.result().get_counts()
+        print("Counts:", counts)
+
+        # Use the most frequent outcome (shots=1 yields the single observed bitstring).
+        prev_bitstring = max(counts, key=counts.get)
+        print("Selected bitstring:", prev_bitstring)
+        results.append(prev_bitstring)
+
+    return results
+
+def main():
+    parser = argparse.ArgumentParser(description="Run sequential QASM simulations with measurement feedback.")
+    parser.add_argument("--num-qubits", type=int, default=2)
+    parser.add_argument("--trotter-steps", type=int, default=2)
+    parser.add_argument("--runs", type=int, default=5)
+    parser.add_argument("--shots", type=int, default=1)
+    parser.add_argument("--seed", type=int, default=None)
+    args = parser.parse_args()
+
+    N = args.num_qubits
+    k = args.trotter_steps
+    angles_ry = np.zeros(N)
+    angles_u3 = np.zeros(N * 3)
+    angles_2q = np.zeros((N, N))
+
+    results = run_sequential_qasm(
+        N,
+        k,
+        angles_ry,
+        angles_u3,
+        angles_2q,
+        runs=args.runs,
+        shots=args.shots,
+        seed=args.seed,
+    )
+    print("Sequential measurement bitstrings:", results)
+
+if __name__ == "__main__":
+    main()
