@@ -1,20 +1,10 @@
-from RBM_surrogate import *
-from MCMC_Proposals import *
-
+from RBM_surrogate import RBM_surrogate
+from MCMC_Proposals import All_proposals
+from qiskit_aer import AerSimulator
+from sampling_qiskit import Trotter_circuit_qiskit
 
 import numpy as np
 import time
-
-# from qiskit_aer import Aer
-# backend = Aer.get_backend('qasm_simulator')
-# transpiled_circuit = transpile(Trotter_circuit_qiskit, backend)
-
-
-def init(seed,N,M,D):
-  np.random.seed(seed)
-  X=np.random.randn(N+M+N*M+N*D+D+N*N)+1j*np.random.randn(N+M+N*M+N*D+D+N*N)
-  X=np.concatenate((np.real(X),np.imag(X)))
-  return X
 
 
 def generate_samples(N, k, s, angles_u3, angles_2q): 
@@ -79,8 +69,7 @@ def Sampling(smpl, sample_size, burn, init_config=[], compute_transition=False):
 
 
 def main(N, sample_size, seed, dir):
-    X=init(seed,N,M=N,D=0)/40
-    smpl = Sampling_Quantum_vectorized(X,N,M=N,D=0,beta=1)
+    smpl = RBM_surrogate(N,M=N,D=0,seed=seed)
 
     prob_dict, sample_list = Sampling(smpl, sample_size, burn=sample_size//10)
 
