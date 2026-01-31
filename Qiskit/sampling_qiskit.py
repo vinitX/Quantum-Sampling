@@ -2,17 +2,8 @@ import numpy as np
 import time
 
 import numpy as np
-from qiskit import QuantumCircuit
+from qiskit import QuantumCircuit, ClassicalRegister, transpile
 from qiskit_aer import AerSimulator
-
-
-def Euler_angle_decomposition(U:np.ndarray):
-    theta = 2 * np.arccos(np.abs(U[0, 0]))
-
-    phi = np.angle(U[1, 0]) - np.angle(U[0, 0])
-    lam = np.angle(U[1, 1]) - np.angle(U[1, 0])
-    
-    return theta, phi, lam
 
 def two_qubit_gate_qiskit(circuit, angle:float, qubit_1:int, qubit_2:int, mode="no_decomposition"):
     # This function provides circuit description of RZZ(theta) - This is the 2-qubit gate used for H_Z
@@ -28,17 +19,11 @@ def two_qubit_gate_qiskit(circuit, angle:float, qubit_1:int, qubit_2:int, mode="
         circuit.h(qubit_2)
     return circuit
 
-def initialize_from_bitstring(qc, N, angles_ry):
-    for i in range(N):
-        qc.ry(angles_ry[i], i)
-
-def Trotter_circuit_qiskit(N, k, angles_ry, angles_u3, angles_2q):
+def Trotter_circuit_qiskit(N, k, bitstring, angles_u3, angles_2q):
     # This is the actual Trotter circuit. Here the circuit construction for Trotterized version of time evolution happens
-
-    #qreg = QuantumRegister(N)
-    #creg = ClassicalRegister(N)
     circuit = QuantumCircuit(N) #, creg)
-    initialize_from_bitstring(circuit, N, angles_ry)
+    for i in range(N):
+        if bitstring[i] == 1: circuit.x(i)
 
     for _ in range(k-1):
         for i in np.arange(N):
@@ -63,34 +48,60 @@ def dict_to_res(counts):
   return np.array(res)
 
 
-def main(N,sample_size):
-  k = 24
-  s = np.random.choice([1.,-1.],size=N)
+def run_sequential_qasm(N, k, angles_u3, angles_2q, runs=10, shots=1, seed=None):
+    simulator = AerSimulator()
+    results = []
+    bitstring = np.random.choice([1.,0],size=N)
 
-  angles_u3 = np.random.uniform(0,2*np.pi,3*N)
-  angles_2q = np.random.uniform(0,2*np.pi,(N,N))
+    for _ in range(runs):
+        circuit = Trotter_circuit_qiskit(N, k, bitstring, angles_u3, angles_2q)
 
-  tim = time.time()
-  simulator = AerSimulator()
+        # creg = ClassicalRegister(N)
+        # circuit.add_register(creg)
+        circuit.measure(range(N), range(N))
 
-  for _ in range(sample_size):
-    angles_ry = np.pi*(s + 1)/2
-    circuit = Trotter_circuit_qiskit(N, k, angles_ry, angles_u3, angles_2q)
-    circuit.measure_all()
-    result = simulator.run(circuit, shots=1).result()
-    counts = result.get_counts(circuit)
-    
-    s = dict_to_res(counts)
+        transpiled = transpile(circuit, simulator, seed_transpiler=seed)
+        job = simulator.run(transpiled, device="CPU", precision="single", shots=shots, seed_simulator=seed)
+        counts = job.result().get_counts()
+        # print("Counts:", counts)
 
-  print("Sampling Time: ", time.time()-tim)
+        # Use the most frequent outcome (shots=1 yields the single observed bitstring).
+        bitstring = max(counts, key=counts.get)
+        print("Selected bitstring:", bitstring)
+        results.append(bitstring)
+
+        print(circuit)
+
+    return results
 
 
-import argparse
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('N', type=int, help='The system size')
-    parser.add_argument('--sample_size', type=int, default=100)
-
+def main():
+    parser = argparse.ArgumentParser(description="Run sequential QASM simulations with measurement feedback.")
+    # parser.add_argument("--num-qubits", type=int, default=4)
+    parser.add_argument("--trotter-steps", type=int, default=4)
+    parser.add_argument("--sample_size", type=int, default=1)
+    parser.add_argument("--shots", type=int, default=1)
+    parser.add_argument("--seed", type=int, default=None)
     args = parser.parse_args()
-    main(args.N, args.sample_size)
+
+    # N = args.num_qubits
+    k = args.trotter_steps
+    runs = args.sample_size
+
+    for _ in range(1):  
+        for N in np.arange(4, 5, 2):
+            angles_ry = np.random.choice([0, np.pi], N)
+            angles_u3 = np.random.uniform(0, 2*np.pi, N*3)
+            angles_2q = np.random.uniform(0, 2*np.pi, (N, N))
+
+            t0 = time.time()
+            results = run_sequential_qasm(N, k, angles_ry, angles_u3, angles_2q, runs=runs, shots=1, seed=args.seed,)
+            t1 = time.time()
+            print(f"Size: {N}  Time: {t1 - t0} sec")
+            # print("Sequential measurement bitstrings:", results)
+
+            with open("qiskit_CPU_times.txt", "a") as f:
+                f.write(f"{N},{t1 - t0}\n")
+
+
     

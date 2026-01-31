@@ -12,7 +12,7 @@ plt.rcParams["font.weight"] = "bold"
 import cudaq
 from cudaq import spin
 
-from qiskit_circuits import *
+from Qiskit.simple_qiskit_circuits import *
 from qiskit_aer import AerSimulator 
 from qiskit.compiler import transpile
 
