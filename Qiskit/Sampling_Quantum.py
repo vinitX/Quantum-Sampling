@@ -1,644 +1,305 @@
-import os
 import numpy as np
-#import netket as nk
-from CudaQ.get_conn import get_conn
-import scipy as sp
-import numpy.linalg as la
-import scipy.linalg as spla
-import time
-import matplotlib.pyplot as plt
+import scipy
+from qiskit_circuits import quantum_sampler
+from qiskit_aer import AerSimulator
+from qiskit import QuantumCircuit, transpile
+
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from spin_utils import SpinOperator
+
+def Euler_angle_decomposition(U:np.ndarray, eps=1e-4):
+    # Pull off a global phase so that U00 is real ≥ 0:
+    # gamma = arg(U00)
+    u00 = U[0,0]
+    gamma = np.angle(u00)
+    U_phase = U * np.exp(-1j * gamma)
+
+    # Now U_phase[0,0] = cos(theta/2) ∈ ℝ, ≥ 0
+    c = np.real(U_phase[0,0])
+    # Clip for numerical safety
+    c = np.clip(c, -1.0, 1.0)
+    theta = 2 * np.arccos(c)
+
+    s = np.sin(theta/2)
+    #print(r"sin($\theta$) = ", s)
+
+    if s < eps:
+        # We set φ=0, absorb any relative phase into λ:
+        phi = 0.0
+        # U11/U00 = exp(i(φ+λ)) ≈ exp(iλ)
+        lam = np.angle(U_phase[1,1] / U_phase[0,0])
+    else:
+        # Standard case: extract φ and λ from off-diagonals
+        # U_phase[1,0] = e^{iφ} sin(θ/2)  ⇒ φ = arg(...)
+        phi = np.angle(U_phase[1,0] / s)
+        # U_phase[0,1] = -e^{iλ} sin(θ/2) ⇒ λ = arg(-U01/s)
+        lam = np.angle(-U_phase[0,1] / s)
+    
+    return theta, phi, lam
 
 
-class Sampling_Quantum_vectorized():
-  def __init__(self,X,N,M,D,beta=1,vv=False):
-    self.N=N
-    self.M=M
-    self.D=D
-    self.beta=beta
+def u3_matrix(theta: float, phi: float, lam: float) -> np.ndarray:
+    """
+    Compute the unitary matrix for the U3 gate with given angles.
+    
+    Args:
+        theta: Rotation angle about the X-axis (radians)
+        phi: Phase angle for first Z-rotation (radians)
+        lam: Phase angle for second Z-rotation (radians)
+    
+    Returns:
+        2x2 complex numpy array representing the U3 gate
+    """
+    # Calculate matrix components
+    cos_theta = np.cos(theta/2)
+    sin_theta = np.sin(theta/2)
+    
+    return np.array([
+        [cos_theta, -np.exp(1j * lam) * sin_theta],
+        [np.exp(1j * phi) * sin_theta, np.exp(1j * (phi + lam)) * cos_theta]
+        ], dtype=np.complex128)
 
-    l = len(X)//2
 
-    self.X=X
-    self.a=X[:N]+1j*X[l:l+N]
-    self.b=X[N:N+M]+1j*X[l+N:l+N+M]
-    self.w=np.reshape(X[N+M:N+M+N*M]+1j*X[l+N+M:l+N+M+N*M],(N,M))
-    self.u=np.reshape(X[N+M+N*M:N+M+N*M+N*D]+1j*X[l+N+M+N*M:l+N+M+N*M+N*D],(N,D))
-    self.d=X[N+M+N*M+N*D:N+M+N*M+N*D+D]+1j*X[l+N+M+N*M+N*D:l+N+M+N*M+N*D+D]
-    self.c=np.reshape(X[N+M+N*M+N*D+D:l]+1j*X[l+N+M+N*M+N*D+D:],(N,N))
+def spin_to_key_nv(s):
+    N=len(s)
+    key=0
+    for i in range(len(s)):
+      key+=(2**i)*(1-s[N-i-1])/2
+    return int(key)
 
-    self.vv = vv
-    if self.vv==False: c=np.zeros((N,N))
-
-    self.choose_config()
-    self.approx_linear()
-    self.approx_BFGS() #(init_params = np.zeros(2+2*M))
-
-  def get_params(self):
-    return self.a,self.b,self.w,self.u,self.d,self.c
-
-  def key_to_spin_nv(self, key):
+def key_to_spin_nv(key, N):
     s=bin(key)[2:]
-    s=(self.N-len(s))*'0' + s
+    s=(N-len(s))*'0' + s
     s=np.array([1-2*int(x) for x in s])
     return s
 
-  def spin_to_key_nv(self, s):
-    key=0
-    for i in range(len(s)):
-      key+=(2**i)*(1-s[self.N-i-1])/2
-    return int(key)
-
-
-  def enum(self,N):
-    N=self.N
-    return self.key_to_spin(np.arange(2**N))
-
-  def key_to_spin(self, key):
-    N = self.N
-    s = np.zeros((len(key),N),dtype=int)
-    for i in range(N):
-      s[:,N-i-1] = 1 - 2*(key%2)
-      key = key//2
-    return s
-
-  def spin_to_key(self, s):
-    N=self.N
+def spin_to_key(s):
+    N=np.shape(key)[1]
     key=np.zeros(len(s),dtype=int)
 
     for i in range(N):
       key+=(2**i)*(1-s[:,N-i-1])//2
     return key
 
-  def f(self,s):
-    beta = self.beta
-    b_vec = np.broadcast_to(self.b, (len(s), self.M))
-    return beta*(s@self.w + b_vec)
-
-  def g(self,s):
-    beta = self.beta
-    d_vec = np.broadcast_to(self.d, (len(s), self.D))
-    return beta*(2*s@np.real(self.u) + 2*np.real(d_vec))
-
-  def f_nv(self,s):
-    beta = self.beta
-    return beta*(s@self.w+self.b)
-
-  def g_nv(self,s):
-    beta = self.beta
-    return beta*(2*s@np.real(self.u)+2*np.real(self.d))
-
-
-  def log_rho_diag_nv(self,s):
-    a,b,w,u,d,c = self.get_params()
-    return np.real(np.sum(np.log(np.cosh(self.f_nv(s))*np.cosh((self.f_nv(s)).conj())))) -2*self.beta*(np.dot(s,np.real(a)))  #-2*beta*(s.T@np.real(c)@s) + np.sum(np.log(np.cosh(self.g(s))))
-
-  def log_rho_diag(self,s):
-    a,b,w,u,d,c = self.get_params()
-    return np.real(np.sum(np.log(np.cosh(self.f(s))*np.cosh((self.f(s)).conj())), axis=1)) -2*self.beta*(s@np.real(a))  #-2*beta*(s.T@np.real(c)@s) + np.sum(np.log(np.cosh(self.g(s))))
-
-  def log_rho_diag_pred_nv(self,s,params):
-    a,b,w,u,d,c = self.get_params()
-    N=self.N
-    beta=self.beta
-
-    y_pred = params[0]
-    y_pred +=  np.dot(s,params[1:1+N])
-    y_pred += np.dot(np.reshape(np.outer(s,s),-1), params[1+N:])
-
-    return y_pred
-
-  def log_rho_diag_pred(self,s,params):
-    a,b,w,u,d,c = self.get_params()
-    N=self.N
-    beta=self.beta
+def key_to_spin(key, N):
+    s = np.zeros((len(key),N),dtype=int)
+    for i in range(N):
+      s[:,N-i-1] = 1 - 2*(key%2)
+      key = key//2
+    return s
+
+def enum(N):
+    return key_to_spin(np.arange(2**N), N)
+
+def Energy_Ising(s, N, poly):
+    E = 0  #poly[0] 
+    E +=  s @ poly[1:1+N]
+
+    J = poly[1+N:].reshape(N, N) 
+    ssT = np.einsum('ki,kj->kij', s, s, optimize='optimal')
+    upper_J = np.triu(J, k=1) 
+    E += np.tensordot(ssT, upper_J, axes=([1, 2], [0, 1]))
+
+    return E
+
+def prob_Ising(s, N, poly, log_rho_max=0):
+    E = Energy_Ising(s, N, poly)
+    return np.exp(E - log_rho_max)
+
+
+def prob_Ising_nv(s, N, poly, log_rho_max=0):
+    s = s.reshape(1, len(s))
+    return prob_Ising(s, N, poly, log_rho_max)
+    
+
+def computing_norm_ratio(N,model_instance_one_body,model_instance_two_body):  #This gives value of alpha = self.computing_norm_ratio()
+    #This computes alpha = ||H_x||_F/||H_z||_F using params only. No storing and computing full matrix is necessary
+    #Coupling_matrix = np.reshape(np.array(self.model_instance_two_body), (self.no_spins, self.no_spins), order='F')
+    alpha = np.sqrt(N)/np.sqrt(sum([J**2 for J in model_instance_two_body[np.tril_indices(N, k = -1)]]) + sum([h**2 for h in model_instance_one_body]))
+    return alpha
+
+def compute_angles(poly, N, time_delta, gamma):
+    l = poly[1:1+N]
+    J = np.reshape(poly[1+N:],(N,N))
+       
+    alpha = computing_norm_ratio(N,l,J)
+    #time_array, time_delta_step = self.scalar_time_sampling(sampling_type="discrete")
+    #gamma_array, gamma_step = self.scalar_gamma_sampling(sampling_type="discrete")
+
+    theta = np.zeros(N)
+    phi = np.zeros(N)
+    lam = np.zeros(N)
+
+    for qubit in range(N):
+        coeff = alpha*(1-gamma)*l[N-1-qubit]
+        one_body_Ham = gamma * spin.x(0) + coeff * spin.z(0)
+        U = scipy.linalg.expm(-1.0j*time_delta*one_body_Ham.to_matrix())
+        theta[qubit], phi[qubit], lam[qubit] = Euler_angle_decomposition(U)  
+        
+        euler_error = 1 - np.abs(np.trace(u3_matrix(theta[qubit], phi[qubit], lam[qubit]) @ U.conj().T))/2
+        if euler_error > 1e-8: 
+          print("Euler Error: ", euler_error)
+    angles_u3 = np.concatenate((theta,phi,lam))
+
+    angles_2q = np.zeros((N,N))
+    for i in range(N):
+        for j in range(i+1,N):
+            angles_2q[i,j] = 2*J[N-1-i, N-1-j]*(1-gamma)*alpha*time_delta
+
+    return angles_u3, angles_2q
+
+
+def Learner_Ham(N, poly, gamma:float, type_of_Ham="with_mixer"): 
+    #Technically not required, only useful if prop of H(v) is studied
+    #This makes the full learner Ham with mixer i.e. (1-gamma)*alpha*H_z + gamma*H_x  or without mixer where we just have H_z
+    # where H_z = H(v) = \sum_i h_i v_i + \sum_{ij} Q_ij v_i v_j with v_i replaced with sigma_z
+    #H_x = mixer = \sum_i X_i
+    #alpha is the norm ratio of ||H_x||_F/||H_z||_F
+    #gamma is unif(gamma1, gamma2). The paper says gamma1 as 0.2 and gamma2 as 0.6
+    #CAUTION - USE this function for SMALL qubit size (n) ONLY as it involves exp storage of matrix size 2**n * 2**n when converted to np.array.
+    # As a SparsePaulilist object, as I have defined below, it is fine to use it even for higher number of qubits
+
+    l = poly[1:1+N]
+    J = np.reshape(poly[1+N:],(N,N))
+
+    alpha = computing_norm_ratio(N,l,J)
+
+    Ham=0
+
+    for i in range(N):
+        for j in range(i+1,N):
+          # Qiskit/CudaQ follows endian order with least sig bit as qubit[0] which is why we have (no_spins-1-index)
+          coef = (1-gamma)*alpha*(J[N-1-i, N-1-j])
+
+          Ham += coef * spin.z(i)*spin.z(j)
+                            
+    for i in np.arange(N):
+        # Qiskit/CudaQ follows endian order with least sig bit as qubit[0] which is why we have (no_spins-1-index)
+        coef = (1-gamma)*alpha*l[N-1-i]
+        Ham += coef * spin.z(i)
+        
+        if type_of_Ham == "with_mixer":
+            Ham += gamma * spin.x(i)
+
+    return Ham
 
-    y_pred = params[0] * np.ones(len(s))
-    y_pred +=  s @ params[1:1+N]
-    y_pred += np.reshape(np.einsum('ki,kj->kij',s,s,optimize='optimal'),(-1,N*N)) @ params[1+N:]
-
-    return y_pred
 
-
-  def choose_config(self, k=None, num_rand=None):
-    #k: Number of best configs.
-    #num_rand: Number of random configs
-    a,b,w,u,d,c = self.get_params()
-    N=self.N
-    M=self.M
-    beta=self.beta
-
-    if k is None:
-      k = N**2//2
-      num_rand = 3*N**2//2
-    num_rand = min(num_rand,2**N)
-
-    config = np.zeros((1+2*M, N),dtype=int)
-    keys = np.zeros(1+2*M, dtype=int)
-    phi = np.zeros(1+2*M)
+def get_transition_matrix_from_proposal(N, Proposal_mat, Energy, acceptance_criteria='metropolis', beta=1):
+    # This function gets the full transition matrix P(s'|s) = Q(s'|s) * Acceptance(s'|s) where Q(s'|s)
+    #can be a quantum circuit proposal, a local flip proposal, uniform proposal or Haar random proposal
+    import math
+    
+    E_rowstack = np.tile(Energy, (2**N,1))  # E_rowstack[i,j] = E_j for all i
+    E_diff = E_rowstack.T - E_rowstack # E_diff[i,j] = E_i - E_j (new E minus old E)
+    
+    downhill_moves = (E_diff <= 0) 
+    
+    if acceptance_criteria =='metropolis':
+        if beta > 0:
+            A_s_sp = np.exp(E_diff*beta, where=downhill_moves, out=np.ones_like(E_diff)) #only compute exp for uphill moves, downhill ones are filled with 1 anyway
+        if beta == math.inf:
+        # reject all downhill, accept all others 
+            A_s_sp = np.where(downhill_moves, 0.0, 1.)
 
-    config[0] = -np.sign(np.real(a))
-    config[1:1+M] = np.sign(np.real(w)).T
-    config[1+M:1+2*M] = -np.sign(np.real(w)).T
-
-    result_config = []
-    result_keys = []
-
-    phi = self.log_rho_diag(config)
-    keys = self.spin_to_key(config)
-
-    #print(keys)
-    #Keeping only unique configurations
-    keys, idx = np.unique(keys, return_index = True)
-    config = config[idx]
-    phi = phi[idx]
-    #print(keys)
-
-    #Sorting configs w.r.t \phi(v) values
-    idx = np.argsort(phi)
-    phi = phi[idx]
-    config = config[idx]
-    keys = keys[idx]
-
-    for i in range(k):
-      if len(config) == 0: break
-      curr_config = config[-1]
-      result_config.append(curr_config)
-      result_keys.append(self.spin_to_key_nv(curr_config))
-
-      config = np.delete(config,-1,axis=0)
-      keys = np.delete(keys,-1,axis=0)
-      phi = np.delete(phi,-1,axis=0)
-
-      for j in range(N):
-        s_new = np.copy(curr_config)
-        s_new[j] = -s_new[j]     #Single-site perturbation
+    Transition_mat = np.multiply(A_s_sp, Proposal_mat)  #note not np.dot but elem wise multiplication
 
-        phi_j = self.log_rho_diag_nv(s_new)
-        key_j = self.spin_to_key_nv(s_new)
-
-        if key_j in keys or key_j in result_keys: continue
+    np.fill_diagonal(Transition_mat, 0)
+    diag = np.ones(2**N) - np.sum(Transition_mat, axis=0) # This step just fills the diag elems with 1-row_sum. This ensures that row_sum=1 for Transition mat
+    Transition_mat = Transition_mat + np.diag(diag)
+    return Transition_mat
 
-        #Merging
-        ii = np.searchsorted(phi, phi_j)
-        if ii==0: continue
 
-        phi = np.insert(phi, ii, phi_j)
-        keys = np.insert(keys, ii, key_j)
-        config = np.insert(config, ii, s_new, axis=0)
+def dict_to_res(counts):
+  for key, value in counts.items():
+    if value == 1: 
+        final_config = key
 
-      #Truncating.
-      phi = phi[-k+i:]
-      keys = keys[-k+i:]
-      config = config[-k+i:]
+  res = [1.0 if s == '0' else -1.0 for s in final_config]
+  
+  return np.flip(res)
 
-      #print(self.log_rho_diag(curr_config))
-      #print(phi)
 
-    #Appending Random Cofigs.
-    random_keys = np.random.randint(0, 2**N, size=num_rand)
-    #random_keys = np.random.choice(np.arange(2**N),size=num_rand,replace=False)
-    result_keys = np.unique(np.concatenate((result_keys, random_keys)))
-    #print(len(result_keys))
 
-    result_config = self.key_to_spin(result_keys)
-    self.config = np.array(result_config)
+def Sampling_Quantum(N, poly, sample_size, tot_time=12, time_delta=0.5, gamma=0.42, beta=1, burn=None, compute_proposal_matrix=False, mode='Exact'):
+  angles_u3, angles_2q = compute_angles(poly, N, time_delta, gamma)
+  k = int(tot_time / time_delta)
 
-    global config_list_vec
-    config_list_vec = np.array(result_keys)
+  s = np.random.choice([1,0],size=N)
 
-    y_actual = self.log_rho_diag(self.config)
-    self.log_rho_max = np.max(y_actual)
-
-
-  def approx_linear(self, eps = 1e-4):
-    config = self.config
-    a,b,w,u,d,c = self.get_params()
-    N=self.N
-    M=self.M
-    beta=self.beta
-
-    y_actual = self.log_rho_diag(config)
-    A = np.zeros((len(config),1+N+N**2))
-
-    A[:,0] = 1
-    A[:,1:N+1] = config
-    A[:,N+1:] = np.reshape(np.einsum('ki,kj->kij',config,config,optimize='optimal'),(-1,N*N))
-
-    W = np.exp(y_actual - self.log_rho_max)
-    W = W / np.sum(W)
-    W = W + eps
-    W = np.diag(np.sqrt(W))
-
-    params = la.lstsq(W@A, W@y_actual, rcond=None)
-    params = params[0]
-
-    self.poly = params
-    #print(params)
-
-  def approx_BFGS(self, init_params=None):
-    config = self.config
-    a,b,w,u,d,c = self.get_params()
-    N=self.N
-    M=self.M
-    beta=self.beta
-
-    err_hist = []
-    def func(params):
-      y_pred= self.log_rho_diag_pred(config, params)
-      y_actual = self.log_rho_diag(config)
-
-      err = np.exp(y_pred-self.log_rho_max) - np.exp(y_actual-self.log_rho_max)
-      err = np.sqrt(np.mean(err**2))
-      err_hist.append(err)
-      return err
-
-    if init_params is None:
-      init_params = self.poly
-
-    #print("Linear Fit Error:  ", func(init_params))
-    res = sp.optimize.minimize(func, init_params, method='BFGS')
-    #print("BFGS Fit Error:  ", res.fun)
-
-    #plt.plot(err_hist)
-    #plt.show()
-    if res.fun < func(init_params):
-      self.poly = res.x
-
-
-  def reduced_density_matrix(self,s1,s2):
-    a,b,w,u,d,c = self.get_params()
-    N=self.N
-    M=self.M
-    D=self.D
-    beta=self.beta
-
-    s1_vec = np.zeros(np.shape(s2))
-    for k in range(np.shape(s2)[1]):
-      s1_vec[:,k] = s1
-
-    def gamma(s1, s2):
-      b_vec = np.broadcast_to(b, (np.shape(s2)[:-1] + (M,)))
-      return np.cosh(beta*(s1@w+b_vec)) * np.cosh(beta*(s2@w+b_vec)).conj()
-
-    def pi(s1,s2):
-      d_vec = np.broadcast_to(d, (np.shape(s2)[:-1] + (D,)))
-      return np.cosh(beta*(s1@u+s2@u.conj()+2*np.real(d_vec)))
-
-    log_rho = -beta*(s1_vec@a+s2@a.conj()) + np.sum(np.log(gamma(s1_vec,s2)), axis=-1) + np.sum(np.log(pi(s1_vec,s2)), axis=-1)
-
-    if self.vv == True:
-      log_rho -= beta*(np.einsum('ki,ij,kj->k',s1,c,s2,optimize='optimal') + np.einsum('ki,ij,kj->k',s2,c.conj(),s2,optimize='optimal'))
-    return np.exp(log_rho - self.log_rho_max)
-
-
-
-  def reduced_density_matrix_nv(self,s1,s2):
-    a,b,w,u,d,c = self.get_params()
-    N=self.N
-    M=self.M
-    D=self.D
-    beta=self.beta
-
-    s1_vec = np.broadcast_to(s1, np.shape(s2))
-
-    def gamma(s1, s2):
-      b_vec = np.broadcast_to(b, (len(s2), M))
-      return np.cosh(beta*(s1@w+b_vec)) * np.cosh(beta*(s2@w+b_vec)).conj()
-
-    def pi(s1,s2):
-      d_vec = np.broadcast_to(d, (len(s2), D))
-      return np.cosh(beta*(s1@u+s2@u.conj()+2*np.real(d_vec)))
-
-    log_rho = -beta*(s1@a+s2@a.conj()) + np.sum(np.log(gamma(s1,s2)), axis=1) + np.sum(np.log(pi(s1,s2)), axis=1)
-
-    if self.vv == True:
-      log_rho -= beta*(np.einsum('ki,ij,kj->k',s1,c,s2,optimize='optimal') + np.einsum('ki,ij,kj->k',s2,c.conj(),s2,optimize='optimal'))
-
-    return np.exp(log_rho - self.log_rho_max)
-
-
-  def reduced_density_matrix_old(self,s1,s2):
-    a,b,w,u,d,c = self.get_params()
-    N=self.N
-    beta=self.beta
-
-    def gamma(s):
-      return np.cosh(beta*(s@w+b))
-
-    def pi(s1,s2):
-      return np.cosh(beta*(s1@u+s2@u.conj()+2*np.real(d)))
-
-    log_rho=np.zeros(len(s2),dtype=complex)
-    for i in range(len(s2)):
-      log_rho[i] = -beta*(np.dot(s1,a)+np.dot(s2[i],a.conj()))  +  -beta*(s1.T@c@s1+s2[i].T@c.conj()@s2[i]) + np.sum(np.log(gamma(s1) * gamma(s2[i]).conj())) + np.sum(np.log(pi(s1,s2[i])))
-      #rho[i]=np.exp(-beta*(np.dot(s1,a)+np.dot(s2[i],a.conj()))) * np.exp(-beta*(s1.T@c@s1+s2[i].T@c.conj()@s2[i])) * gamma(s1) * gamma(s2[i]).conj() * pi(s1,s2[i])
-    return np.exp(log_rho - self.log_rho_max)
-
-
-  def prob(self,s):
-    return np.exp(self.log_rho_diag_pred(s,self.poly) - self.log_rho_max)
-
-  def prob_nv(self,s):
-    return np.exp(self.log_rho_diag_pred_nv(s,self.poly) - self.log_rho_max)
-
-  def kernel(self,s):
-    return np.exp(self.log_rho_diag(s) - self.log_rho_diag_pred(s,self.poly))
-
-
-  def median_filter(self,x,k=7):
-    x_new = []
-    x_iter = []
-    for i in range(len(x)-k+1):
-      x_new.append(np.median(x[i:i+k]))
-      x_iter.append(i+np.argsort(x[i:i+k])[k//2])
-    return np.array(x_new), np.array(x_iter)
-
-
-  def sampler(self,s,algo='Metropolis_uniform'):
-    N = self.N
-    if algo=='Metropolis_uniform':
-      p1 = self.prob_nv(s)
-
-      s_new = np.random.choice([1,-1],size=N)
-      p2 = self.prob_nv(s_new)
-
-      accept = min(1.0,p2/p1)
-
-      if np.random.rand()<accept:
-        return s_new
-      else: return s
-
-
-  def local_energy(self,H,s,H_terms=None):
-    N = self.N
-    H_terms = 2*N  
-
-    #tm = time.time()
-    s2 = np.zeros((len(s),H_terms,N))
-    val = np.zeros((len(s),H_terms),dtype=complex)
-    for i in range(len(s)):
-      temp_spin, temp_val = get_conn(H,s[i])
-      s2[i,:len(temp_spin)] = temp_spin
-      val[i,:len(temp_val)] = temp_val
-      #s2[i], val[i] = get_conn(H,s[i])
-    #print("\t\t\t\t\t\t get_conn() run-time: ",time.time()-tm)
-
-    rho_conn = self.reduced_density_matrix(s,s2)
-
-    return np.real(np.sum(val*rho_conn,axis=1)/self.reduced_density_matrix(s,np.reshape(s,(len(s),1,N)))[:,0])
-
-
-  def sampling(self,H,sample_size=1000,burn=None,algo='Metropolis_uniform',exact_dist=None):
-    N=self.N
-
-    if algo=='Exact' and 2**N < sample_size:
-      s = self.enum(N)
-      prob_dist = self.prob(s)
-      prob_dist = prob_dist / np.sum(prob_dist)
-      samples = np.random.choice(np.arange(2**N), size=sample_size, p=prob_dist)
-      prob_mat, _ = np.histogram(samples, bins=np.arange(2**N+1))
-      return prob_mat/sample_size
-
-
-    s=np.random.choice([1,-1],size=N)
+  if compute_proposal_matrix == False:
+    prob_dict = {}
+    key_list = []
 
     if burn is None:
       burn = sample_size//10
-
-    #tm=time.time()
-    for k in range(burn):
-      s = self.sampler(s,algo='Metropolis_uniform')
-    #print("\n#Burn Complete \n\n")
-    #print("\t\t\t\t\t\t Burn Time: ", time.time()-tm)
-
-    #tm=time.time()
-    if 2**N < sample_size:
-      prob_mat = np.zeros(2**N)
-
-      for k in range(sample_size):
-        s = self.sampler(s,'Metropolis_uniform')
-        prob_mat[self.spin_to_key_nv(s)]+=1
-      prob_mat = prob_mat / np.sum(prob_mat)
-      return prob_mat
-
-    else: 
-      prob_dict = {}
-
-      for k in range(sample_size):
-        s = self.sampler(s,'Metropolis_uniform')
-        key = self.spin_to_key_nv(s)
-        if key in prob_dict: prob_dict[key]+=1
-        else: prob_dict[key]=1
       
-      for key in prob_dict.keys():
-        prob_dict[key] = prob_dict[key] / sample_size
+    for _ in range(burn):
+        s_new = quantum_sampler(N,poly,s,k,angles_u3,angles_2q)
+        p1 = prob_Ising_nv(s, N, poly)
+        p2 = prob_Ising_nv(s_new, N, poly)
 
+        if np.random.rand()<min(1.0,p2/p1): s = s_new 
+  
+    for _ in range(sample_size):
+        s_new = quantum_sampler(N,poly,s,k,angles_u3,angles_2q)
 
-      return prob_dict
-    #print("\t\t\t\t\t\t Metropolis Sampling: ", time.time()-tm)
+        p1 = prob_Ising_nv(s, N, poly)
+        p2 = prob_Ising_nv(s_new, N, poly)
+
+        if np.random.rand()<min(1.0,p2/p1): s = s_new     
+        
+        key = spin_to_key_nv(s)
+        if key in prob_dict: prob_dict[key] +=1
+        else: prob_dict[key] = 1
+        key_list.append(key)
+
+    for key in prob_dict.keys():
+      prob_dict[key] = prob_dict[key] / sample_size
+
+    prob_dict = dict(sorted(prob_dict.items()))
+
+    return prob_dict     
+     
+'''
+  elif compute_proposal_matrix == True: 
+    if mode == "Exact":
+      full_Ham_mat = Learner_Ham(N, poly, gamma, type_of_Ham="with_mixer").to_matrix()  
+      U_t = scipy.linalg.expm(-1.0j*tot_time*full_Ham_mat)
+
+    elif mode == "Trotter":
+      U_t = np.zeros((2**N, 2**N), dtype=np.complex128)
+
+      for key in range(2**N):
+          s = key_to_spin_nv(key, N)
+          angles_ry = np.flip(np.pi*(1-s)/2)
+
+          U_t[:, key] = (np.array(cudaq.get_state(
+                        Trotter_circuit, N, k, angles_ry, angles_u3, np.reshape(angles_2q,-1)), copy=False))
+
+    Proposal_mat =  np.abs(U_t)**2  
+    #Proposal_mat = np.ones((2**N,2**N))/(2**N)
+
+    s = enum(N)
+    Energy = Energy_Ising(s, N, poly)
+    Transition_matrix = np.abs(get_transition_matrix_from_proposal(N, Proposal_mat, Energy, acceptance_criteria='metropolis', beta=beta))
+
+    key = spin_to_key_nv(bitstring)
+    for _ in range(burn): 
+      key = np.random.choice(np.arange(2**N), p=Transition_matrix[:,key])
+
+    prob_dist = np.zeros(2**N)
+
+    for _ in range(sample_size):
+      key = np.random.choice(np.arange(2**N), p=Transition_matrix[:,key])
+      prob_dist[key] += 1
+
+    return prob_dist / np.sum(prob_dist)
+ '''
 
     
+
   
-    
-
-
-  def Energy_exact(self,H):
-    s = self.enum(self.N)
-    rho_diag = self.prob(s) * self.kernel(s)
-    E = np.sum(rho_diag * self.local_energy(H,s)) / np.sum(rho_diag)
-    return np.real(E)
-  
-  def Energy_sampling(self,H,prob_dict={},prob_mat=[]):
-    if len(prob_dict) > 0:
-      keys = np.array(list(prob_dict.keys()))
-      s = self.key_to_spin(keys)
-      prob_mat = np.array(list(prob_dict.values()))
-    elif len(prob_mat) > 0:
-      s = self.enum(self.N)
-    else: 
-      print("Provide either a dictionary or a vector of probabilities")
-      return 0
-
-    #tm=time.time()    
-    local_energies = self.local_energy(H,s)
-    kernels = self.kernel(s)
-    #print("\t\t\t\t\t\t Local Energy / Kernel Computation: ", time.time()-tm)
-
-    E = np.real(np.sum(local_energies*kernels*prob_mat)/np.sum(kernels*prob_mat))
-    return E
-
-
-  def derivative_operator(self,s1,s2,idx):
-    beta = self.beta
-    a,b,w,u,d,c = self.get_params()
-
-    s1_vec = np.zeros(np.shape(s2))
-    for k in range(np.shape(s2)[1]):
-      s1_vec[:,k] = s1
-
-    var, k, m = self.map_idx_to_var(idx)
-
-    def f(s,p):
-      return beta * (b[p] + s@w[:,p])
-
-    def g(p):
-      return beta*(2*np.real(d[p])+s1_vec@u[:,p]+s2@u[:,p].conj())
-
-    if var=='ra':
-      return -beta*(s1_vec[:,:,k]+s2[:,:,k])
-    elif var=='ia':
-      return -1j*beta*(s1_vec[:,:,k]-s2[:,:,k])
-
-    elif var=='rc':
-      if k==m: return np.zeros(np.shape(s2)[:-1]) #No self-interaction
-      if self.vv == False: return np.zeros(np.shape(s2)[:-1])
-      return -beta*(s1_vec[:,:,k]*s1_vec[:,:,m]+s2[:,:,k]*s2[:,:,m])
-    elif var=='ic':
-      if k==m: return np.zeros(np.shape(s2)[:-1]) #No self-interaction
-      if self.vv == False: return np.zeros(np.shape(s2)[:-1])
-      return -1j*beta*(s1_vec[:,:,k]*s1_vec[:,:,m]-s2[:,:,k]*s2[:,:,m])
-
-    elif var=='rb':
-      return beta*(np.tanh(f(s1_vec,k)) + np.tanh(f(s2,k).conj()))
-    elif var=='ib':
-      return 1j*beta*(np.tanh(f(s1_vec,k)) - np.tanh(f(s2,k).conj()))
-
-    elif var=='rw':
-      return beta*(np.tanh(f(s1_vec,m))*s1_vec[:,:,k] + np.tanh(f(s2,m).conj())*s2[:,:,k])
-    elif var=='iw':
-      return 1j*beta*(np.tanh(f(s1_vec,m))*s1_vec[:,:,k] - np.tanh(f(s2,m).conj())*s2[:,:,k])
-
-    elif var=='rd':
-      return 2*beta*np.tanh(g(k))
-    elif var=='id':
-      return 0
-
-    elif var=='ru':
-      return beta*(s1_vec[:,:,k]+s2[:,:,k])*np.tanh(g(m))
-    elif var=='iu':
-      return 1j*beta*(s1_vec[:,:,k]-s2[:,:,k])*np.tanh(g(m))
-
-  def map_idx_to_var(self,idx):
-    N=self.N
-    M=self.M
-    D=self.D
-
-    l = len(self.X)//2
-
-    if idx<N: return 'ra', idx, None
-    elif idx<N+M: return 'rb', idx-N, None
-    elif idx<N+M+N*M:
-      indices = idx-(N+M)
-      return 'rw', indices//M, indices%M
-    elif idx<N+M+N*M+N*D:
-      indices = idx-(N+M+N*M)
-      return 'ru', indices//D, indices%D
-    elif idx<N+M+N*M+N*D+D: return 'rd', idx-(N+M+N*M+N*D), None
-    elif idx<l:
-      indices = idx-(N+M+N*M+N*D+D)
-      return 'rc', indices//N, indices%N
-
-    elif idx<l+N: return 'ia', idx-l, None
-    elif idx<l+N+M: return 'ib', idx-(l+N), None
-    elif idx<l+N+M+N*M:
-      indices = idx-(l+N+M)
-      return 'iw', indices//M, indices%M
-    elif idx<l+N+M+N*M+N*D:
-      indices = idx-(l+N+M+N*M)
-      return 'iu', indices//D, indices%D
-    elif idx<l+N+M+N*M+N*D+D: return 'id', idx-(l+N+M+N*M+N*D), None
-    elif idx<2*l:
-      indices = idx-(l+N+M+N*M+N*D+D)
-      return 'ic', indices//N, indices%N
-
-  def local_gradient(self,H,s,idx,H_terms=None):
-    N = self.N
-    H_terms = 2*N 
-
-    #tm = time.time()
-    s2 = np.zeros((len(s),H_terms,N))
-    val = np.zeros((len(s),H_terms),dtype=complex)
-    for i in range(len(s)):
-      temp_spin, temp_val = get_conn(H,s[i])
-      s2[i,:len(temp_spin)] = temp_spin
-      val[i,:len(temp_val)] = temp_val
-      #s2[i], val[i] = get_conn(H,s[i])
-    #global total_get_conn_time
-    #total_get_conn_time += (time.time()-tm)
-    #print("\t\t\t\t\t\t get_conn() run-time: ",time.time()-tm)
-
-    rho_conn = self.reduced_density_matrix(s,s2)
-    grad_conn = self.derivative_operator(s,s2,idx)
-
-    s_vec = np.reshape(s, (len(s),1,N))
-    rho_diag = self.reduced_density_matrix(s,s_vec)[:,0]
-
-    return np.sum(val * grad_conn * rho_conn, axis=1) / rho_diag
-
-  def grad_exact(self,H):
-    N=self.N
-    s = self.enum(N)
-
-    rho_diag = self.prob(s) * self.kernel(s)
-    E = np.sum(rho_diag * self.local_energy(H,s)) / np.sum(rho_diag)
-
-    s_vec = np.reshape(s, (len(s),1,N))
-
-    derivative_op_diag = np.zeros(len(self.X),dtype=complex)
-    grad = np.zeros(len(self.X),dtype=complex)
-
-    #tm=time.time()
-    for idx in range(len(self.X)):
-      if self.vv == False:
-        var, _, _ = self.map_idx_to_var(idx)
-        if var == 'rc' or var == 'ic': continue
-
-      derivative_op_diag[idx] = np.sum(rho_diag * self.derivative_operator(s,s_vec,idx)[:,0])
-      grad[idx] = np.sum(rho_diag * self.local_gradient(H,s,idx))
-
-    derivative_op_diag = derivative_op_diag / np.sum(rho_diag)
-
-    #print("\t\t\t\t\t\t Exact Gradient Computation: ", time.time()-tm)
-
-    return grad/np.sum(rho_diag) - E * derivative_op_diag   #np.real()
-
-
-
-  def grad_Sampling(self,H,prob_dict={},prob_mat=[],Energy=None):
-    if len(prob_dict) > 0:
-      keys = np.array(list(prob_dict.keys()))
-      s = self.key_to_spin(keys)
-      prob_mat = np.array(list(prob_dict.values()))
-    elif len(prob_mat) > 0:
-      s = self.enum(self.N)
-    else: 
-      print("Provide either a dictionary or a vector of probabilities")
-      return 0
-
-    N=self.N
-
-    derivative_op_diag = np.zeros(len(self.X),dtype=complex)
-    local_grads = np.zeros(len(self.X),dtype=complex)
-    grad = np.zeros(len(self.X),dtype=complex)
-
-    #tm=time.time()
-    local_energies = self.local_energy(H,s)
-    kernels = self.kernel(s)
-
-    rho_diag = kernels*prob_mat
-    Energy = np.real(np.sum(local_energies*rho_diag)/np.sum(rho_diag))
-
-    s_vec = np.reshape(s, (len(s),1,N))
-
-    for idx in range(len(self.X)):
-      if self.vv == False:
-        var, _, _ = self.map_idx_to_var(idx)
-        if var == 'rc' or var == 'ic': continue
-
-      derivative_op_diag[idx] = np.sum(rho_diag * self.derivative_operator(s,s_vec,idx)[:,0])
-      local_grads[idx] = np.sum(rho_diag * self.local_gradient(H,s,idx))
-
-    grad = (local_grads - Energy * derivative_op_diag)/np.sum(rho_diag)
-
-    #print("\t\t\t\t\t\t Local Gradient Computation: ", time.time()-tm)
-    return grad

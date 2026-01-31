@@ -1,5 +1,5 @@
 from RBM_surrogate import RBM_surrogate
-from MCMC_Proposals import All_proposals
+from Archive.MCMC_Proposals import All_proposals
 from qiskit_aer import AerSimulator
 from sampling_qiskit import Trotter_circuit_qiskit
 

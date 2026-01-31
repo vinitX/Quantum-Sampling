@@ -51,28 +51,25 @@ def dict_to_res(counts):
   return np.array(res)
 
 
-def run_sequential_qasm(N, k, angle_rx, angles_rz, angles_2q, runs=10, shots=1, seed=None):
+
+def quantum_sampler(N, k, bitstring, angle_rx, angles_rz, angles_2q, shots=1):
     simulator = AerSimulator()
-    results = []
-    bitstring = np.random.choice([1,0],size=N)
-    
-    for _ in range(runs):
-        circuit = Trotter_circuit_qiskit(N, k, bitstring, angle_rx, angles_rz, angles_2q)
-        circuit.measure_all()
-    
-        transpiled = transpile(circuit, simulator, seed_transpiler=seed)
-        
-        job = simulator.run(transpiled, device="GPU", precision="single", shots=shots, seed_simulator=seed)
-        counts = job.result().get_counts()
-        # print("Counts:", counts)
 
-        # Use the most frequent outcome (shots=1 yields the single observed bitstring).
-        bitstring = max(counts, key=counts.get)
-        bitstring = np.array([int(b) for b in bitstring[::-1]])  # Reverse to match Qiskit's qubit ordering 
-        # print("Selected bitstring:", bitstring)
-        results.append(bitstring)
+    circuit = Trotter_circuit_qiskit(N, k, bitstring, angle_rx, angles_rz, angles_2q)
+    circuit.measure_all()
 
-    return results
+    transpiled = transpile(circuit, simulator)
+    
+    job = simulator.run(transpiled, device="GPU", precision="single", shots=shots)
+    counts = job.result().get_counts()
+    # print("Counts:", counts)
+
+    # Use the most frequent outcome (shots=1 yields the single observed bitstring).
+    bitstring = max(counts, key=counts.get)
+    bitstring = np.array([int(b) for b in bitstring[::-1]])  # Reverse to match Qiskit's qubit ordering 
+    # print("Selected bitstring:", bitstring)
+
+    return bitstring
 
 
 def main():
@@ -88,16 +85,20 @@ def main():
     k = args.trotter_steps
 
     angle_rx = np.random.uniform(0, 2*np.pi)
+    results = []
 
     for _ in range(10):  
         for N in np.arange(12, 30, 2):
 
+            bitstring = np.random.choice([1,0],size=N)
             angles_rz = np.random.uniform(0, 2*np.pi, N)
             angles_2q = np.diag(np.random.uniform(0, 2*np.pi, N-1), k=1)
             angles_2q = (angles_2q + angles_2q.T) / 2 
 
             t0 = time.time()
-            results = run_sequential_qasm(N, k, angle_rx, angles_rz, angles_2q, runs=args.sample_size, shots=1, seed=args.seed,)
+            for _ in range(args.sample_size):
+                bitstring = quantum_sampler(N, k, bitstring, angle_rx, angles_rz, angles_2q, shots=1, seed=args.seed,)
+                results.append(bitstring)
             t1 = time.time()
             print(f"Size: {N}  Time: {t1 - t0} sec")
             # print("Sequential measurement bitstrings:", results)

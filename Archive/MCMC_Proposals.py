@@ -9,10 +9,9 @@ matplotlib.rcParams['mathtext.fontset'] ='stix'
 matplotlib.rcParams['font.family'] = 'STIXGeneral'
 plt.rcParams["font.weight"] = "bold"
 
-import cudaq
 from cudaq import spin
 
-from Qiskit.simple_qiskit_circuits import *
+from Qiskit.sampling_qiskit_circuits import Trotter_circuit_qiskit
 from qiskit_aer import AerSimulator 
 from qiskit.compiler import transpile
 
@@ -309,14 +308,14 @@ class All_proposals:
         return np.sum(diff_bin)
 
 
-def get_operator(kernel):
-    num_qubits = 2
-    N = 2**num_qubits
-    U = np.zeros((N, N), dtype=np.complex128)
-    params = [1 ,2]
+# def get_operator(kernel):
+#     num_qubits = 2
+#     N = 2**num_qubits
+#     U = np.zeros((N, N), dtype=np.complex128)
+#     params = [1 ,2]
 
-    for j in range(N):
-        state_j    = np.zeros((N), dtype=np.complex128)
-        state_j[j] = 1.0
-        U[:, j] = np.array(cudaq.get_state(kernel, params, state_j), copy=False)
-    print(U)
+#     for j in range(N):
+#         state_j    = np.zeros((N), dtype=np.complex128)
+#         state_j[j] = 1.0
+#         U[:, j] = np.array(cudaq.get_state(kernel, params, state_j), copy=False)
+#     print(U)

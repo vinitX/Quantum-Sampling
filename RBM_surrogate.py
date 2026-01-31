@@ -1,12 +1,8 @@
-import os
 import numpy as np
 #import netket as nk
-from CudaQ.get_conn import get_conn
+from spin_utils import get_conn
 import scipy as sp
 import numpy.linalg as la
-import scipy.linalg as spla
-import time
-import matplotlib.pyplot as plt
 
 
 class RBM_surrogate():
