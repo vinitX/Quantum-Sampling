@@ -10,13 +10,10 @@ import matplotlib.pyplot as plt
 
 
 class RBM_surrogate():
-  def __init__(self,N,M,D=0,X=[],seed=1,beta=1,vv=False,dtype='complex'):
+  def __init__(self,N,M,X=[],seed=1,beta=1,dtype='complex'):
     self.N=N
     self.M=M
-    self.D=D
     self.beta=beta
-    self.vv = vv
-    self.c = None
     np.random.seed(seed)
 
     if len(X) == 0: 
@@ -30,23 +27,15 @@ class RBM_surrogate():
       self.a=X[:N]+1j*X[l:l+N]
       self.b=X[N:N+M]+1j*X[l+N:l+N+M]
       self.w=np.reshape(X[N+M:N+M+N*M]+1j*X[l+N+M:l+N+M+N*M],(N,M))
-      self.u=np.reshape(X[N+M+N*M:N+M+N*M+N*D]+1j*X[l+N+M+N*M:l+N+M+N*M+N*D],(N,D))
-      self.d=X[N+M+N*M+N*D:N+M+N*M+N*D+D]+1j*X[l+N+M+N*M+N*D:l+N+M+N*M+N*D+D]
-      if vv==True: 
-        self.c=np.reshape(X[N+M+N*M+N*D+D:l]+1j*X[l+N+M+N*M+N*D+D:],(N,N))
-
+      
     elif dtype=='real': 
       self.a=X[:N]
       self.b=X[N:N+M]
       self.w=np.reshape(X[N+M:N+M+N*M],(N,M))
-      self.u=np.reshape(X[N+M+N*M:N+M+N*M+N*D],(N,D))
-      self.d=X[N+M+N*M+N*D:N+M+N*M+N*D+D]
-      if vv==True: 
-        self.c=np.reshape(X[N+M+N*M+N*D+D:l],(N,N))
 
 
   def get_params(self):
-    return self.a,self.b,self.w,self.u,self.d,self.c
+    return self.a,self.b,self.w
 
   def key_to_spin_nv(self, key):
     s=bin(key)[2:]
@@ -86,27 +75,17 @@ class RBM_surrogate():
     b_vec = np.broadcast_to(self.b, (len(s), self.M))
     return beta*(s@self.w + b_vec)
 
-  def g(self,s):
-    beta = self.beta
-    d_vec = np.broadcast_to(self.d, (len(s), self.D))
-    return beta*(2*s@np.real(self.u) + 2*np.real(d_vec))
-
   def f_nv(self,s):
     beta = self.beta
     return beta*(s@self.w+self.b)
 
-  def g_nv(self,s):
-    beta = self.beta
-    return beta*(2*s@np.real(self.u)+2*np.real(self.d))
-
-
   def log_rho_diag_nv(self,s):
-    a,b,w,u,d,c = self.get_params()
-    return np.real(np.sum(np.log(np.cosh(self.f_nv(s))*np.cosh((self.f_nv(s)).conj())))) -2*self.beta*(np.dot(s,np.real(a)))  #-2*beta*(s.T@np.real(c)@s) + np.sum(np.log(np.cosh(self.g(s))))
+    a,b,w = self.get_params()
+    return np.real(np.sum(np.log(np.cosh(self.f_nv(s))*np.cosh((self.f_nv(s)).conj())))) -2*self.beta*(np.dot(s,np.real(a)))  
 
   def log_rho_diag(self,s):
-    a,b,w,u,d,c = self.get_params()
-    return np.real(np.sum(np.log(np.cosh(self.f(s))*np.cosh((self.f(s)).conj())), axis=1)) -2*self.beta*(s@np.real(a))  #-2*beta*(s.T@np.real(c)@s) + np.sum(np.log(np.cosh(self.g(s))))
+    a,b,w = self.get_params()
+    return np.real(np.sum(np.log(np.cosh(self.f(s))*np.cosh((self.f(s)).conj())), axis=1)) -2*self.beta*(s@np.real(a))  
 
   def log_rho_diag_pred_nv(self,s,params):
     N=self.N
@@ -135,7 +114,7 @@ class RBM_surrogate():
   def choose_config(self, k=None, num_rand=None):
     #k: Number of best configs.
     #num_rand: Number of random configs
-    a,b,w,u,d,c = self.get_params()
+    a,b,w = self.get_params()
     N=self.N
     M=self.M
     beta=self.beta
@@ -225,7 +204,7 @@ class RBM_surrogate():
 
   def approx_linear(self, eps = 1e-4):
     config = self.config
-    a,b,w,u,d,c = self.get_params()
+    a,b,w = self.get_params()
     N=self.N
     M=self.M
     beta=self.beta
@@ -250,7 +229,7 @@ class RBM_surrogate():
 
   def approx_BFGS(self, init_params=None):
     config = self.config
-    a,b,w,u,d,c = self.get_params()
+    a,b,w = self.get_params()
     N=self.N
     M=self.M
     beta=self.beta
@@ -279,10 +258,9 @@ class RBM_surrogate():
 
 
   def reduced_density_matrix(self,s1,s2):
-    a,b,w,u,d,c = self.get_params()
+    a,b,w = self.get_params()
     N=self.N
     M=self.M
-    D=self.D
     beta=self.beta
 
     s1_vec = np.zeros(np.shape(s2))
@@ -306,10 +284,9 @@ class RBM_surrogate():
 
 
   def reduced_density_matrix_nv(self,s1,s2):
-    a,b,w,u,d,c = self.get_params()
+    a,b,w = self.get_params()
     N=self.N
     M=self.M
-    D=self.D
     beta=self.beta
 
     s1_vec = np.broadcast_to(s1, np.shape(s2))
@@ -331,7 +308,7 @@ class RBM_surrogate():
 
 
   def reduced_density_matrix_old(self,s1,s2):
-    a,b,w,u,d,c = self.get_params()
+    a,b,w = self.get_params()
     N=self.N
     beta=self.beta
 
@@ -403,7 +380,7 @@ class RBM_surrogate():
 
   def derivative_operator(self,s1,s2,idx):
     beta = self.beta
-    a,b,w,u,d,c = self.get_params()
+    a,b,w = self.get_params()
 
     s1_vec = np.zeros(np.shape(s2))
     for k in range(np.shape(s2)[1]):
@@ -414,22 +391,10 @@ class RBM_surrogate():
     def f(s,p):
       return beta * (b[p] + s@w[:,p])
 
-    def g(p):
-      return beta*(2*np.real(d[p])+s1_vec@u[:,p]+s2@u[:,p].conj())
-
     if var=='ra':
       return -beta*(s1_vec[:,:,k]+s2[:,:,k])
     elif var=='ia':
       return -1j*beta*(s1_vec[:,:,k]-s2[:,:,k])
-
-    elif var=='rc':
-      if k==m: return np.zeros(np.shape(s2)[:-1]) #No self-interaction
-      if self.vv == False: return np.zeros(np.shape(s2)[:-1])
-      return -beta*(s1_vec[:,:,k]*s1_vec[:,:,m]+s2[:,:,k]*s2[:,:,m])
-    elif var=='ic':
-      if k==m: return np.zeros(np.shape(s2)[:-1]) #No self-interaction
-      if self.vv == False: return np.zeros(np.shape(s2)[:-1])
-      return -1j*beta*(s1_vec[:,:,k]*s1_vec[:,:,m]-s2[:,:,k]*s2[:,:,m])
 
     elif var=='rb':
       return beta*(np.tanh(f(s1_vec,k)) + np.tanh(f(s2,k).conj()))
@@ -441,20 +406,9 @@ class RBM_surrogate():
     elif var=='iw':
       return 1j*beta*(np.tanh(f(s1_vec,m))*s1_vec[:,:,k] - np.tanh(f(s2,m).conj())*s2[:,:,k])
 
-    elif var=='rd':
-      return 2*beta*np.tanh(g(k))
-    elif var=='id':
-      return 0
-
-    elif var=='ru':
-      return beta*(s1_vec[:,:,k]+s2[:,:,k])*np.tanh(g(m))
-    elif var=='iu':
-      return 1j*beta*(s1_vec[:,:,k]-s2[:,:,k])*np.tanh(g(m))
-
   def map_idx_to_var(self,idx):
     N=self.N
     M=self.M
-    D=self.D
 
     l = len(self.X)//2
 
@@ -463,26 +417,13 @@ class RBM_surrogate():
     elif idx<N+M+N*M:
       indices = idx-(N+M)
       return 'rw', indices//M, indices%M
-    elif idx<N+M+N*M+N*D:
-      indices = idx-(N+M+N*M)
-      return 'ru', indices//D, indices%D
-    elif idx<N+M+N*M+N*D+D: return 'rd', idx-(N+M+N*M+N*D), None
-    elif idx<l:
-      indices = idx-(N+M+N*M+N*D+D)
-      return 'rc', indices//N, indices%N
 
     elif idx<l+N: return 'ia', idx-l, None
     elif idx<l+N+M: return 'ib', idx-(l+N), None
     elif idx<l+N+M+N*M:
       indices = idx-(l+N+M)
       return 'iw', indices//M, indices%M
-    elif idx<l+N+M+N*M+N*D:
-      indices = idx-(l+N+M+N*M)
-      return 'iu', indices//D, indices%D
-    elif idx<l+N+M+N*M+N*D+D: return 'id', idx-(l+N+M+N*M+N*D), None
-    elif idx<2*l:
-      indices = idx-(l+N+M+N*M+N*D+D)
-      return 'ic', indices//N, indices%N
+  
 
   def local_gradient(self,H,s,idx):
     N = self.N
