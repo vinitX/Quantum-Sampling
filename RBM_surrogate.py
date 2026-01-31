@@ -271,14 +271,8 @@ class RBM_surrogate():
       b_vec = np.broadcast_to(b, (np.shape(s2)[:-1] + (M,)))
       return np.cosh(beta*(s1@w+b_vec)) * np.cosh(beta*(s2@w+b_vec)).conj()
 
-    def pi(s1,s2):
-      d_vec = np.broadcast_to(d, (np.shape(s2)[:-1] + (D,)))
-      return np.cosh(beta*(s1@u+s2@u.conj()+2*np.real(d_vec)))
+    log_rho = -beta*(s1_vec@a+s2@a.conj()) + np.sum(np.log(gamma(s1_vec,s2)), axis=-1) 
 
-    log_rho = -beta*(s1_vec@a+s2@a.conj()) + np.sum(np.log(gamma(s1_vec,s2)), axis=-1) + np.sum(np.log(pi(s1_vec,s2)), axis=-1)
-
-    if self.vv == True:
-      log_rho -= beta*(np.einsum('ki,ij,kj->k',s1,c,s2,optimize='optimal') + np.einsum('ki,ij,kj->k',s2,c.conj(),s2,optimize='optimal'))
     return np.exp(log_rho - self.log_rho_max)
 
 
@@ -289,20 +283,13 @@ class RBM_surrogate():
     M=self.M
     beta=self.beta
 
-    s1_vec = np.broadcast_to(s1, np.shape(s2))
+    # s1_vec = np.broadcast_to(s1, np.shape(s2))
 
     def gamma(s1, s2):
       b_vec = np.broadcast_to(b, (len(s2), M))
       return np.cosh(beta*(s1@w+b_vec)) * np.cosh(beta*(s2@w+b_vec)).conj()
 
-    def pi(s1,s2):
-      d_vec = np.broadcast_to(d, (len(s2), D))
-      return np.cosh(beta*(s1@u+s2@u.conj()+2*np.real(d_vec)))
-
-    log_rho = -beta*(s1@a+s2@a.conj()) + np.sum(np.log(gamma(s1,s2)), axis=1) + np.sum(np.log(pi(s1,s2)), axis=1)
-
-    if self.vv == True:
-      log_rho -= beta*(np.einsum('ki,ij,kj->k',s1,c,s2,optimize='optimal') + np.einsum('ki,ij,kj->k',s2,c.conj(),s2,optimize='optimal'))
+    log_rho = -beta*(s1@a+s2@a.conj()) + np.sum(np.log(gamma(s1,s2)), axis=1) 
 
     return np.exp(log_rho - self.log_rho_max)
 
@@ -315,12 +302,9 @@ class RBM_surrogate():
     def gamma(s):
       return np.cosh(beta*(s@w+b))
 
-    def pi(s1,s2):
-      return np.cosh(beta*(s1@u+s2@u.conj()+2*np.real(d)))
-
     log_rho=np.zeros(len(s2),dtype=complex)
     for i in range(len(s2)):
-      log_rho[i] = -beta*(np.dot(s1,a)+np.dot(s2[i],a.conj()))  +  -beta*(s1.T@c@s1+s2[i].T@c.conj()@s2[i]) + np.sum(np.log(gamma(s1) * gamma(s2[i]).conj())) + np.sum(np.log(pi(s1,s2[i])))
+      log_rho[i] = -beta*(np.dot(s1,a)+np.dot(s2[i],a.conj()))  + np.sum(np.log(gamma(s1) * gamma(s2[i]).conj())) 
       #rho[i]=np.exp(-beta*(np.dot(s1,a)+np.dot(s2[i],a.conj()))) * np.exp(-beta*(s1.T@c@s1+s2[i].T@c.conj()@s2[i])) * gamma(s1) * gamma(s2[i]).conj() * pi(s1,s2[i])
     return np.exp(log_rho - self.log_rho_max)
 
